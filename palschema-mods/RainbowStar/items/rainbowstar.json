@@ -1,0 +1,15 @@
+{
+    "RainbowStar": {
+        "Type": "Consumable",
+        "IconTexture": "$resource/RainbowStar/rainbow_item",
+        "TypeA": "Food",
+        "TypeB": "FoodVegetable",
+        "Rank": 1,
+        "Rarity": 2,
+        "Price": 200,
+        "MaxStackCount": 9999,
+        "SortID": 420000,
+        "Weight": 0.2,
+        "RestoreSatiety": 30
+    }
+}

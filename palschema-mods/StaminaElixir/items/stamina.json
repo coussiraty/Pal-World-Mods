@@ -1,0 +1,22 @@
+{
+    "StaminaElixir": {
+        "Type": "Consumable",
+        "IconTexture": "/Game/Others/InventoryItemIcon/Texture/T_itemicon_Food_LuxuryMedicines.T_itemicon_Food_LuxuryMedicines",
+        "TypeA": "Consume",
+        "TypeB": "Medicine",
+        "Rank": 1,
+        "Rarity": 3,
+        "Price": 500,
+        "MaxStackCount": 99,
+        "SortID": 500000,
+        "Weight": 0.5,
+        "Recipe": {
+            "Product_Count": 1,
+            "WorkAmount": 20.0,
+            "Material1_Count": 3,
+            "Material1_Id": "Stone",
+            "Material2_Count": 3,
+            "Material2_Id": "Wood"
+        }
+    }
+}

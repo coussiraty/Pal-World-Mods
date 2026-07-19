@@ -1,0 +1,8 @@
+{
+    "DT_ItemNameText": {
+        "ITEM_NAME_StaminaElixir": "Elixir de Stamina"
+    },
+    "DT_ItemDescriptionText": {
+        "ITEM_DESC_StaminaElixir": "Use em um Pal para aumentar permanentemente a Stamina dele (voo/corrida). Ate um limite."
+    }
+}

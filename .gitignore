@@ -1,0 +1,34 @@
+# --- asset do jogo NUNCA entra aqui ---------------------------------
+# Qualquer coisa extraída ou derivada dos .pak do Palworld é propriedade da
+# Pocketpair. As ferramentas deste repo geram tudo isso a partir da SUA cópia
+# instalada do jogo -- é assim que tem que ser distribuído.
+*.pak
+*.uasset
+*.uexp
+*.ubulk
+*.umap
+paldump/out/
+paldump/tex/
+paldump/meshes/
+Cooked/
+Saved/
+
+# --- build ----------------------------------------------------------
+bin/
+obj/
+__pycache__/
+*.pyc
+
+# --- ruído local ----------------------------------------------------
+*.bak
+*.bak_*
+*.log
+*.dmp
+*.off
+__folder_managed_by_vortex
+rs_out.txt
+cook_log.txt
+pak_log.txt
+
+# arte derivada de textura do jogo -- gerada por tools/icones/montar_icone.py
+palschema-mods/*/resources/images/*.png

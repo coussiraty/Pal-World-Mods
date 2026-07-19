@@ -1,0 +1,7 @@
+{
+    "DT_TechnologyRecipeUnlock_Common": {
+        "Special_HatchingPalEgg": { "LevelCap": 1, "Cost": 0, "IsBossTechnology": false, "RequireTechnology": "None", "RequireResearchId": "None" },
+        "Expedition": { "LevelCap": 1, "Cost": 0, "IsBossTechnology": false, "RequireTechnology": "None", "RequireResearchId": "None" },
+        "BreedFarm": { "LevelCap": 1, "Cost": 0, "IsBossTechnology": false, "RequireTechnology": "None", "RequireResearchId": "None" }
+    }
+}

@@ -1,0 +1,22 @@
+{
+    "DT_BuildObjectDataTable_Common": {
+        "HatchingPalEgg": {
+            "Material1_Id": "Wood",  "Material1_Count": 30,
+            "Material2_Id": "Stone", "Material2_Count": 30,
+            "Material3_Id": "None",  "Material3_Count": 0,
+            "Material4_Id": "None",  "Material4_Count": 0
+        },
+        "BreedFarm": {
+            "Material1_Id": "Wood",  "Material1_Count": 50,
+            "Material2_Id": "Stone", "Material2_Count": 50,
+            "Material3_Id": "None",  "Material3_Count": 0,
+            "Material4_Id": "None",  "Material4_Count": 0
+        },
+        "Expedition": {
+            "Material1_Id": "Wood",  "Material1_Count": 50,
+            "Material2_Id": "Stone", "Material2_Count": 50,
+            "Material3_Id": "None",  "Material3_Count": 0,
+            "Material4_Id": "None",  "Material4_Count": 0
+        }
+    }
+}

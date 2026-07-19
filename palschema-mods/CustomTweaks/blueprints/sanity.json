@@ -1,0 +1,9 @@
+{
+    "BP_PalGameSetting_C": {
+        "DecreaseSanity_Hunger": 0.0,
+        "DecreaseSanity_Starvation": 0.0,
+        "DecreaseSanity_DamagedMultiply": 0.0,
+        "FullStomachPercent_RecoverySanity": 0,
+        "RecoverySanity_FullStomach": 5.0
+    }
+}

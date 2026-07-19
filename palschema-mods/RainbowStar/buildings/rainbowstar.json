@@ -1,0 +1,56 @@
+{
+    "RainbowStar_Plantation": {
+        "Name": "Plantação Prismática",
+        "Description": "Plantação arco-íris. Uma colheita rende as sete culturas de uma vez.",
+        "BlueprintClassName": "BP_BuildObject_RainbowStar",
+        "BlueprintClassSoft": "/Game/Mods/RainbowStar/BP_BuildObject_RainbowStar.BP_BuildObject_RainbowStar_C",
+        "IconTexture": "$resource/RainbowStar/rainbow",
+        "Hp": 2000,
+        "Defense": 2,
+        "MaterialType": "Wood",
+        "MaterialSubType": "Wood",
+        "bBelongToBaseCamp": true,
+        "DeteriorationDamage": 0.0,
+        "BuildingData": {
+            "TypeA": "Food",
+            "TypeB": "Food_Basic",
+            "TypeUIDisplay": "Farm",
+            "SortId": 9100,
+            "Rank": 1,
+            "RequiredBuildWorkAmount": 3000.0,
+            "BuildExpRate": 2.21,
+            "InstallNeighborThreshold": 140.0,
+            "AssetValue": 1,
+            "BuildCapacity": 0,
+            "ConsumeEnergySpeed": 0.0,
+            "RequiredEnergyType": "None",
+            "InstallMaxNumInBaseCamp": 0,
+            "MaxBuildCountInRaidBossArea": 0,
+            "bInstallAtReticle": false,
+            "bInstallableNoObstacleFromCamera": false,
+            "bIsInstallOnlyHubAround": false,
+            "bIsInstallOnlyInDoor": false,
+            "bIsInstallOnlyOnBase": false,
+            "bIsPaintable": false,
+            "bIsProhibitedInRaidBossArea": false,
+            "Material1_Id": "Wood",
+            "Material1_Count": 30,
+            "Material2_Id": "Stone",
+            "Material2_Count": 30
+        },
+        "Assignments": [
+            { "WorkSuitability": "Seeding",    "WorkSuitabilityRank": 1, "bPlayerWorkable": true, "bBaseCampWorkerWorkable": true, "WorkType": "Seeding",       "WorkActionType": "Feeding",  "WorkerMaxNum": 2, "AffectSanityValue": -0.11, "AffectFullStomachValue": 1.0 },
+            { "WorkSuitability": "Watering",   "WorkSuitabilityRank": 1, "bPlayerWorkable": true, "bBaseCampWorkerWorkable": true, "WorkType": "Watering_Farm", "WorkActionType": "Watering", "WorkerMaxNum": 2, "AffectSanityValue": -0.11, "AffectFullStomachValue": 1.0 },
+            { "WorkSuitability": "Collection", "WorkSuitabilityRank": 1, "bPlayerWorkable": true, "bBaseCampWorkerWorkable": true, "WorkType": "FarmHarvest",   "WorkActionType": "Harvest",  "WorkerMaxNum": 2, "AffectSanityValue": -0.11, "AffectFullStomachValue": 1.0 }
+        ],
+        "Technology": {
+            "UnlockBuildObjects": [ "RainbowStar_Plantation" ],
+            "IconName": "FarmBlockV2_Berries",
+            "IsBossTechnology": false,
+            "Name": "Plantação Prismática",
+            "Description": "Desbloqueia a Plantação Prismática, que rende as sete culturas.",
+            "LevelCap": 1,
+            "Cost": 0
+        }
+    }
+}

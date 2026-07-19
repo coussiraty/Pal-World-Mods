@@ -1,0 +1,64 @@
+{
+    "DT_ItemRecipeDataTable_Common": {
+        "Cake": {
+            "Material1_Id": "Flour",
+            "Material1_Count": 5,
+            "Material2_Id": "None",
+            "Material2_Count": 0,
+            "Material3_Id": "None",
+            "Material3_Count": 0,
+            "Material4_Id": "None",
+            "Material4_Count": 0,
+            "Material5_Id": "None",
+            "Material5_Count": 0
+        },
+        "Cake02": {
+            "Material1_Id": "Flour",
+            "Material1_Count": 5,
+            "Material2_Id": "None",
+            "Material2_Count": 0,
+            "Material3_Id": "None",
+            "Material3_Count": 0,
+            "Material4_Id": "None",
+            "Material4_Count": 0,
+            "Material5_Id": "None",
+            "Material5_Count": 0
+        },
+        "Cake03": {
+            "Material1_Id": "Flour",
+            "Material1_Count": 8,
+            "Material2_Id": "None",
+            "Material2_Count": 0,
+            "Material3_Id": "None",
+            "Material3_Count": 0,
+            "Material4_Id": "None",
+            "Material4_Count": 0,
+            "Material5_Id": "None",
+            "Material5_Count": 0
+        },
+        "Cake04": {
+            "Material1_Id": "Flour",
+            "Material1_Count": 12,
+            "Material2_Id": "None",
+            "Material2_Count": 0,
+            "Material3_Id": "None",
+            "Material3_Count": 0,
+            "Material4_Id": "None",
+            "Material4_Count": 0,
+            "Material5_Id": "None",
+            "Material5_Count": 0
+        },
+        "Cake05": {
+            "Material1_Id": "Flour",
+            "Material1_Count": 20,
+            "Material2_Id": "None",
+            "Material2_Count": 0,
+            "Material3_Id": "None",
+            "Material3_Count": 0,
+            "Material4_Id": "None",
+            "Material4_Count": 0,
+            "Material5_Id": "None",
+            "Material5_Count": 0
+        }
+    }
+}
