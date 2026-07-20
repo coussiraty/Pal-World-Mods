@@ -45,11 +45,11 @@
         ],
         "Technology": {
             "UnlockBuildObjects": [ "RainbowStar_Plantation" ],
-            "IconName": "FarmBlockV2_Berries",
+            "IconName": "RainbowStar_Plantation",
             "IsBossTechnology": false,
             "Name": "Plantação Prismática",
             "Description": "Desbloqueia a Plantação Prismática, que rende as sete culturas.",
-            "LevelCap": 1,
+            "LevelCap": 4,
             "Cost": 0
         }
     }

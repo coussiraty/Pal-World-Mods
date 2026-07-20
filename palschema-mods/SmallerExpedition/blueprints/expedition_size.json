@@ -2,6 +2,9 @@
     "BP_BuildObject_Expedition_C": {
         "Root": {
             "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 }
+        },
+        "CheckOverlapCollision": {
+            "BoxExtent": { "X": 824.16, "Y": 320.62, "Z": 235.02 }
         }
     }
 }

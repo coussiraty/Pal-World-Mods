@@ -5,7 +5,7 @@
             "CropClassPath": "/Game/Mods/RainbowStar/BP_PalMapObjectFarmCrop_RainbowStar.BP_PalMapObjectFarmCrop_RainbowStar_C",
             "CropItemId": "RainbowStar",
             "GrowupTime": 180.0,
-            "CropItemNum": 10,
+            "CropItemNum": 0,
             "SeedingWorkAmount": 4500.0,
             "WateringWorkAmount": 4500.0,
             "HarvestWorkAmount": 4500.0,
