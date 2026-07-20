@@ -32,3 +32,6 @@ pak_log.txt
 
 # arte derivada de textura do jogo -- gerada por tools/icones/montar_icone.py
 palschema-mods/*/resources/images/*.png
+
+# releases binarios (vao pro Nexus, nao pro git)
+/dist/

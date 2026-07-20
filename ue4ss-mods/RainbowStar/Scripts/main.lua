@@ -1,9 +1,12 @@
 -- =====================================================================
---  Rainbow Star  --  plantacao que rende as 7 culturas
+--  Rainbow Star  --  Plantacao Prismatica: uma colheita, as 7 culturas
 --
---  O que este script faz: ao colher a RainbowStar_Plantation, larga NO
---  CANTEIRO as 7 culturas, do jeito nativo (recolhe andando por cima, e
---  os pals carregam pro bau sozinhos).
+--  Duas metades:
+--   1. COLHEITA: ao colher a RainbowStar_Plantation, larga no canteiro as 7
+--      culturas do jeito nativo (recolhe andando por cima, pals levam pro bau).
+--   2. VISUAL PRISMATICO: o canteiro cresce so com framboesa (o jogo enche um
+--      unico ISM por estagio); aqui as mudas sao repartidas entre 7 ISMs, um
+--      por cultura, pra o canteiro mostrar as 7 plantas de verdade.
 --
 --  O resto do mod NAO esta aqui:
 --    construcao/icone/aba/custo ..... PalSchema  buildings/rainbowstar.json
@@ -11,17 +14,16 @@
 --    item colhido + nome ............ PalSchema  items/ e translations/
 --    blueprints da planta/canteiro .. LogicMods/RainbowStar.pak
 --
---  REGRAS DO UE4SS QUE ESTE ARQUIVO RESPEITA (aprendidas na marra em 19/07):
+--  REGRAS DO UE4SS QUE ESTE ARQUIVO RESPEITA (aprendidas na marra):
 --   1. Callback de RegisterHook JA roda na game thread. Nunca LoopAsync com
---      UObject -- foi o que derrubava o AutoHatchLua (5 minidumps).
+--      UObject -- foi o que derrubava outros mods (minidumps).
 --   2. Ponteiro nulo NAO vira nil: vira userdata truthy. So :IsValid() prova.
 --   3. "chamou sem erro" != "funcionou": pcall nao pega access violation.
+--   4. '#' num TArray do UE4SS nao funciona -- use :GetArrayNum().
 -- =====================================================================
 
 local CONFIG = {
     AnchorMapObjectId = "RainbowStar_Plantation",
-    -- As 7 culturas. O drop nativo da row e o item "RainbowStar"; estas vem
-    -- todas por aqui.
     Culturas = {
         { id = "Berries", num = 10 },
         { id = "Wheat",   num = 10 },
@@ -43,12 +45,14 @@ local function alive(o)
     return ok and v == true
 end
 
--- ---------------------------------------------------------------------
---  ROTA 1 (a boa): inventario -> RequestDrop_ToServer com autopickup.
---  Mesmo pipeline do botao "largar" do inventario, entao o item nasce
---  identico ao drop de colheita.
---  ATENCAO: GetInventoryData() vive no APalPlayerState, NAO no Controller.
--- ---------------------------------------------------------------------
+
+-- =====================================================================
+--  1. COLHEITA -- larga as 7 culturas no canteiro
+-- =====================================================================
+
+-- ROTA 1 (a boa): inventario -> RequestDrop_ToServer com autopickup. Mesmo
+-- pipeline do botao "largar", entao o item nasce identico ao drop de colheita.
+-- ATENCAO: GetInventoryData() vive no APalPlayerState, NAO no Controller.
 local function inventario()
     local ps = FindFirstOf("PalPlayerState")
     if alive(ps) then
@@ -136,11 +140,8 @@ local function dropNativo(loc)
     return true, string.format("%d slots: %s", #froms, table.concat(entregues, ","))
 end
 
--- ---------------------------------------------------------------------
---  ROTA 2 (reserva): spawner de incidente, offset relativo ao ator.
---  Funciona, mas o pickup exige interagir em vez de recolher andando.
---  NAO destruir o ator: e classe de incidente e leva os itens junto.
--- ---------------------------------------------------------------------
+-- ROTA 2 (reserva): spawner de incidente, offset relativo ao ator. Funciona,
+-- mas o pickup exige interagir. NAO destruir o ator: leva os itens junto.
 local SPAWNER = nil
 local function dropReserva(loc)
     local UEHelpers = require("UEHelpers")
@@ -170,9 +171,6 @@ local function dropReserva(loc)
     return #deu > 0, "reserva: " .. table.concat(deu, ",")
 end
 
--- ---------------------------------------------------------------------
---  hook de colheita (RegisterHook ja roda na game thread)
--- ---------------------------------------------------------------------
 RegisterHook("/Script/Pal.PalMapObjectFarmBlockV2ModelStateBehaviourHarvestable:OnFinishWorkInServer",
 function(Context, WorkParam)
     local ok, err = pcall(function()
@@ -211,49 +209,35 @@ end)
 
 
 -- =====================================================================
---  VISUAL PRISMATICO
+--  2. VISUAL PRISMATICO -- reparte as mudas entre as 7 culturas
 --
---  Como o jogo desenha um canteiro: cada estagio de crescimento tem UM
---  InstancedStaticMeshComponent, e o jogo enche em runtime o ISM do estagio
---  atual com N instancias (uma por muda). Um ISM so aceita UM mesh -- e por
---  isso que um canteiro vanilla e sempre uma cultura so.
+--  O canteiro cresce com um ISM cheio (framboesa) e 6 ISMs irmaos vazios, um
+--  por cultura. A cada passe, as mudas do ISM cheio sao redistribuidas em
+--  rodizio entre os 7 -- entao o canteiro mostra trigo, tomate, alface, etc.
+--  lado a lado, cada um com o mesh e o material reais do jogo.
 --
---  Quem manda nesse endereçamento e o proprio ator: GrowupProcessSets e um
---  array de FPalFarmCropGrowupProcessSet, e cada entrada tem um
---  FComponentReference (TargetCompRef.ComponentProperty) que nomeia o
---  componente por NOME DE PROPRIEDADE. Nosso BP declara 7 entradas no estagio
---  colhivel, uma por cultura.
---
---  Este bloco NAO chumba nome de componente: ele le o GrowupProcessSets do
---  ator e trabalha com o que estiver la. Isso importa porque os nomes ja
---  mudaram uma vez (o BP e filho do BP do Tomate, entao existem tanto os ISMs
---  herdados 'CropISM' quanto os nossos 'CropISM_0') e chumbar o nome errado
---  faz o mod operar num componente morto, que nunca recebe instancia.
---
---  Dois cenarios possiveis, e o codigo cobre os dois sem saber qual e:
---    a) a engine honra so a 1a entrada  -> um ISM com N mudas, 6 vazios
---    b) a engine honra as 7             -> 7 ISMs com as MESMAS N mudas,
---                                          empilhadas no mesmo ponto
---  Nos dois casos a saida desejada e a mesma: as N mudas repartidas em
---  rodizio entre as 7 culturas. O algoritmo e unico -- junta as transforms
---  de quem tiver mais instancias, zera todos e redistribui.
---
---  ARMADILHAS DO UE4SS RESPEITADAS AQUI (todas ja custaram caro antes):
---   1. '#' num TArray do UE4SS NAO funciona -- use :GetArrayNum(). Foi
---      exatamente isso que quebrou a versao anterior: 'for i = 1, #cs' rodava
---      zero voltas e o diagnostico imprimia lista vazia.
---   2. Ponteiro nulo NAO vira nil, vira userdata truthy. So :IsValid() prova.
---   3. GetInstanceTransform(idx, FTransform& out, bWorldSpace) tem OUT PARAM:
---      devolve (bool, FTransform). Ler so o 1o retorno pega o bool.
---   4. Este callback ja roda na game thread (LoopInGameThreadWithDelay).
+--  Os 6 irmaos ficam FORA do GrowupProcessSets de proposito: com 7 entradas no
+--  mesmo estado o jogo parava de popular qualquer ISM. Com o array no formato
+--  vanilla (3 entradas) so o CropISM e alimentado, e este bloco reparte a
+--  partir dele -- por isso os nomes dos irmaos precisam estar listados aqui.
 -- =====================================================================
 
 local INTERVALO = 3000     -- ms entre passes
 local MIN_MUDAS = 7        -- abaixo disso nao ha o que repartir
+local IRMAOS_PRISMA = { "RS_Prisma_Wheat", "RS_Prisma_Tomato", "RS_Prisma_Lettuce",
+                        "RS_Prisma_Carrot", "RS_Prisma_Onion", "RS_Prisma_Potato" }
 
--- pega componente pelo NOME EXATO da variavel do BP. O ator expoe cada
--- componente como ObjectProperty, entao planta[nome] resolve direto: sem
--- UFunction, sem TArray, sem StaticFindObject -- nao ha o que dar errado.
+-- so mexemos nas NOSSAS plantacoes -- os canteiros vanilla do jogador ficam
+-- intactos (senao o distribuidor os processaria a toa).
+local function ehNossa(planta)
+    local cls = ""
+    pcall(function() cls = planta:GetClass():GetFullName() end)
+    return string.find(cls, "RainbowStar", 1, true) ~= nil
+end
+
+-- componente pelo NOME EXATO da variavel do BP. O ator expoe cada componente
+-- como ObjectProperty, entao planta[nome] resolve direto -- sem UFunction, sem
+-- TArray, sem StaticFindObject.
 local function pegaComp(planta, nome)
     local c
     local ok = pcall(function() c = planta[nome] end)
@@ -267,8 +251,8 @@ local function conta(c)
     return n or 0
 end
 
--- le do PROPRIO ator quais componentes a engine usa no estagio colhivel.
--- ProcessRate 1.0 == estagio colhivel (vale pro vanilla e pro nosso BP).
+-- le do PROPRIO ator quais componentes a engine usa no estagio colhivel
+-- (ProcessRate 1.0 == colhivel). Nao chuma nome: trabalha com o que estiver la.
 local function alvosColhiveis(planta)
     local nomes = {}
     pcall(function()
@@ -289,16 +273,30 @@ local function alvosColhiveis(planta)
     return nomes
 end
 
--- GetInstanceTransform(InstanceIndex, OutInstanceTransform, bWorldSpace) -- 3 PARAMETROS
--- (Engine.lua:17144-17148). O out param TEM que ser passado como placeholder {},
--- senao o argumento seguinte escorrega pra vaga errada: chamar (i, true) enfia o
--- 'true' no OutInstanceTransform, deixa bWorldSpace vazio e nao volta transform
--- nenhuma. Foi esse o bug do "li so 0 de 9 transforms". O util e o 2o RETORNO.
-local function transformDa(c, i)
+-- Ler a transform de uma instancia. GetInstanceTransform NAO serve neste UE4SS
+-- (devolve so um bool; o out param nao volta como 2o retorno). A rota certa e
+-- ler a propriedade PerInstanceSMData[i].Transform (FMatrix) e converter.
+-- Transform em espaco LOCAL do componente; como origem e destino sao ISMs
+-- irmaos sob a mesma raiz, copiar em local e o correto (AddInstance false).
+local KML
+local function kmath()
+    if not KML then
+        pcall(function() KML = require("UEHelpers").GetKismetMathLibrary() end)
+    end
+    return KML
+end
+
+local function transformDa(c, i)          -- i base 0, como o resto da API de ISM
     local t
     pcall(function()
-        local _, out = c:GetInstanceTransform(i, {}, true)
-        t = out
+        local d = c.PerInstanceSMData
+        if not d then return end
+        local e = d[i + 1]                -- TArray do UE4SS indexa a partir de 1
+        if not e then return end
+        local m = e.Transform
+        if not m then return end
+        local k = kmath()
+        if k then t = k:Conv_MatrixToTransform(m) end
     end)
     return t
 end
@@ -311,8 +309,8 @@ local function posDaInstancia(c, i)
     return p
 end
 
--- ja repartido? se duas culturas diferentes tem a 1a muda no MESMO ponto,
--- entao estao empilhadas (cenario b) e ainda falta repartir.
+-- ja repartido? se duas culturas tem a 1a muda no MESMO ponto, estao
+-- empilhadas e ainda falta repartir.
 local function estaEmpilhado(a, b)
     local pa, pb = posDaInstancia(a, 0), posDaInstancia(b, 0)
     if not (pa and pb) then return nil end            -- indeterminado
@@ -322,75 +320,12 @@ end
 
 local feitos = {}          -- memo do passe anterior; reconstruido a cada passe
 local vistosAgora = {}
-local diagnosticado = {}   -- 1 diagnostico por assinatura de problema
+local avisado = {}         -- 1 aviso por assinatura de problema
 
-local function diag(chave, msg)
-    if not CONFIG.Log or diagnosticado[chave] then return end
-    diagnosticado[chave] = true
+local function aviso(chave, msg)
+    if not CONFIG.Log or avisado[chave] then return end
+    avisado[chave] = true
     log("[prisma] " .. msg)
-end
-
--- ---------------------------------------------------------------------
---  RAIO-X do canteiro: uma vez por ator, despeja TUDO no log.
---  Existe porque diagnostico picado custou varias idas e vindas: cada
---  rodada respondia uma pergunta e levantava outra. Isso aqui responde
---  "de que classe e", "quais componentes existem de verdade", "quantas
---  mudas cada um tem" e "qual GrowupProcessSets o ator realmente carrega"
---  de uma vez so.
--- ---------------------------------------------------------------------
-local raioXFeito = {}
-
-local function nomeDe(o)
-    local n = "?"
-    pcall(function() n = o:GetName():ToString() end)
-    return n
-end
-
-local function raioX(planta, chave)
-    if raioXFeito[chave] then return end
-    raioXFeito[chave] = true
-
-    local cls = "?"
-    pcall(function() cls = planta:GetClass():GetFullName() end)
-    log("[raio-x] ator=" .. chave)
-    log("[raio-x]   classe=" .. cls)
-
-    -- GrowupProcessSets como o ATOR realmente carrega (nao como o pak diz)
-    local ok, err = pcall(function()
-        local sets = planta.GrowupProcessSets
-        if not sets then log("[raio-x]   GrowupProcessSets = nil"); return end
-        local n = sets:GetArrayNum()
-        log("[raio-x]   GrowupProcessSets: " .. tostring(n) .. " entradas")
-        for i = 1, n do
-            local s = sets[i]
-            local est, rate, comp = "?", "?", "?"
-            pcall(function() est = tostring(s.State) end)
-            pcall(function() rate = tostring(s.ProcessRate) end)
-            pcall(function() comp = s.TargetCompRef.ComponentProperty:ToString() end)
-            log(string.format("[raio-x]     %d) estado=%s rate=%s comp=%s", i, est, rate, comp))
-        end
-    end)
-    if not ok then log("[raio-x]   ERRO lendo GrowupProcessSets: " .. tostring(err)) end
-
-    -- todos os ISMs do ator (agora com GetArrayNum, nao '#')
-    local ok2, err2 = pcall(function()
-        local classe = StaticFindObject("/Script/Engine.InstancedStaticMeshComponent")
-        if not classe then log("[raio-x]   classe ISM nao resolveu"); return end
-        local cs = planta:K2_GetComponentsByClass(classe)
-        if not cs then log("[raio-x]   K2_GetComponentsByClass -> nil"); return end
-        local n = cs:GetArrayNum()
-        log("[raio-x]   ISMs no ator: " .. tostring(n))
-        for i = 1, n do
-            local c = cs[i]
-            if alive(c) then
-                local qtd, mesh = 0, "?"
-                pcall(function() qtd = c:GetInstanceCount() end)
-                pcall(function() mesh = nomeDe(c.StaticMesh) end)
-                log(string.format("[raio-x]     %-22s mudas=%-4s mesh=%s", nomeDe(c), tostring(qtd), mesh))
-            end
-        end
-    end)
-    if not ok2 then log("[raio-x]   ERRO enumerando ISMs: " .. tostring(err2)) end
 end
 
 local function repartir(planta)
@@ -398,33 +333,31 @@ local function repartir(planta)
 
     local chave = "?"
     pcall(function() chave = planta:GetFullName() end)
-    if string.find(chave, "Default__", 1, true) then return end   -- CDO, nao tem componente
+    if string.find(chave, "Default__", 1, true) then return end   -- CDO
+    if not ehNossa(planta) then return end                        -- canteiro vanilla
     vistosAgora[chave] = true
-    raioX(planta, chave)
 
     local nomes = alvosColhiveis(planta)
     if #nomes == 0 then
-        diag("sem-sets", "nao consegui ler GrowupProcessSets do canteiro -- " ..
-             "visual prismatico desligado pra este ator")
+        aviso("sem-sets", "nao consegui ler GrowupProcessSets -- visual desligado")
         return
     end
+    -- soma os 6 irmaos (ficam fora do GrowupProcessSets de proposito)
+    local vistos = {}
+    for _, n in ipairs(nomes) do vistos[n] = true end
+    for _, n in ipairs(IRMAOS_PRISMA) do
+        if not vistos[n] then nomes[#nomes + 1] = n end
+    end
 
-    local comps = {}
-    local faltando = {}
+    local comps, faltando = {}, {}
     for _, n in ipairs(nomes) do
         local c = pegaComp(planta, n)
         if c then comps[#comps + 1] = c else faltando[#faltando + 1] = n end
     end
     if #faltando > 0 then
-        diag("faltando", "GrowupProcessSets cita componentes que o ator nao expoe: " ..
-             table.concat(faltando, ","))
+        aviso("faltando", "componentes que o ator nao expoe: " .. table.concat(faltando, ","))
     end
     if #comps == 0 then return end
-
-    if #comps == 1 then
-        diag("uma-entrada", "a engine honra so 1 entrada por estagio -- " ..
-             "as outras 6 culturas nao serao alimentadas por ela")
-    end
 
     -- de onde vem as transforms: quem tiver mais instancias
     local maior, nMaior, total = nil, 0, 0
@@ -435,11 +368,10 @@ local function repartir(planta)
     end
 
     if total == 0 then
-        feitos[chave] = nil                     -- colhido/arrancado: pode repartir de novo
+        feitos[chave] = nil                     -- colhido/arrancado: reparte de novo depois
         return
     end
-    if nMaior < MIN_MUDAS then return end       -- ainda brotando
-
+    if nMaior < MIN_MUDAS then return end        -- ainda brotando
     if feitos[chave] then return end
 
     -- ja esta repartido? (so da pra saber com 2+ componentes com instancia)
@@ -450,9 +382,9 @@ local function repartir(planta)
                 if not a then a = c elseif not b then b = c end
             end
         end
-        if a and b then
-            local emp = estaEmpilhado(a, b)
-            if emp == false then feitos[chave] = true; return end   -- ja repartido
+        if a and b and estaEmpilhado(a, b) == false then
+            feitos[chave] = true
+            return                              -- ja repartido
         end
     end
 
@@ -463,30 +395,28 @@ local function repartir(planta)
         if t then tr[#tr + 1] = t end
     end
     if #tr < MIN_MUDAS then
-        diag("transforms", string.format("li so %d de %d transforms -- adiando", #tr, nMaior))
+        aviso("transforms", string.format("li so %d de %d transforms -- adiando", #tr, nMaior))
         return
     end
 
     -- 2) zera todos e reparte em rodizio
     for _, c in ipairs(comps) do
         if not pcall(function() c:ClearInstances() end) then
-            diag("clear", "ClearInstances falhou -- abortei pra nao deixar canteiro pela metade")
+            aviso("clear", "ClearInstances falhou -- abortei pra nao deixar pela metade")
             return
         end
     end
-
     local postos = 0
     for i, t in ipairs(tr) do
         local destino = comps[((i - 1) % #comps) + 1]
-        if alive(destino) and pcall(function() destino:AddInstance(t, true) end) then
+        if alive(destino) and pcall(function() destino:AddInstance(t, false) end) then
             postos = postos + 1
         end
     end
 
     feitos[chave] = true
     if CONFIG.Log then
-        log(string.format("planta prismatica: %d mudas repartidas em %d culturas",
-                          postos, #comps))
+        log(string.format("planta prismatica: %d mudas repartidas em %d culturas", postos, #comps))
     end
 end
 
