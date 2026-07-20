@@ -243,6 +243,30 @@ do
     end
 end
 
+-- ============ NOTIFICACAO NATIVA de "item obtido" (WBP_ItemGet) ============
+-- Os labels flutuantes reais de pickup, iguais aos de pegar item do chao.
+-- Via oficial: UPalLogUtility::AddItemGetLog(WorldContextObject, {StaticItemId, Num})
+-- (PalLogUtility.h:94; struct FPalStaticItemIdAndNum = { FName StaticItemId; int32 Num }).
+-- E BlueprintFunctionLibrary estatica -> chama no CDO Default__PalLogUtility.
+-- Roda dentro do M.collect, que e callback de tecla (game thread) -> seguro.
+local function nativeItemGet(items)
+    if not items or #items == 0 then return false end
+    local lib = StaticFindObject("/Script/Pal.Default__PalLogUtility")
+    if not isok(lib) then log("itemget: sem PalLogUtility"); return false end
+    local world = FindFirstOf("PalPlayerController")
+    if not isok(world) then world = FindFirstOf("PalHUDInGame") end
+    if not isok(world) then log("itemget: sem WorldContext"); return false end
+    local n = 0
+    for _, it in ipairs(items) do
+        local ok = pcall(function()
+            lib:AddItemGetLog(world, { StaticItemId = FName(it.name), Num = it.count })
+        end)
+        if ok then n = n + 1 end
+    end
+    log(string.format("itemget: %d/%d label(s) nativo(s) de pickup", n, #items))
+    return n > 0
+end
+
 local function getModel() return FindFirstOf("PalMapObjectCharacterTeamMissionModel") end
 local function wbl() return StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary") end
 local function expeditionWidget()
@@ -459,9 +483,10 @@ function M.collect()
     local st = safe(function() return model.State end, "?")
     log("collect: State DEPOIS=" .. tostring(st) .. "  (se a mesa esvaziou, os itens foram pra mochila)")
 
-    -- mostra a telinha custom com o que foi coletado
+    -- mostra o que foi coletado com a NOTIFICACAO NATIVA de pickup do jogo
+    -- (labels flutuantes, igual pegar item do chao) -- sem HUD custom.
     if ok and #coletados > 0 then
-        HUDMOD.show("EXPEDICAO COLETADA", coletados, 6)
+        nativeItemGet(coletados)
     end
 end
 

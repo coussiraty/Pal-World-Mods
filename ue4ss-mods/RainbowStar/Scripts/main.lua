@@ -337,6 +337,23 @@ local function repartir(planta)
     if not ehNossa(planta) then return end                        -- canteiro vanilla
     vistosAgora[chave] = true
 
+    -- GATE POR ESTAGIO: as culturas maduras (RS_Prisma_*) so podem aparecer no
+    -- estagio COLHIVEL. Durante o crescimento (semear/regar/crescer) elas TEM que
+    -- ficar vazias, senao o canteiro mostra tudo maduro cedo demais (o bug que o
+    -- usuario viu). O jogo esconde os brotos/mudas certos por estagio via o
+    -- GrowupProcessSets -- mas os irmaos prismaticos NAO estao la, entao quem os
+    -- segura e' este gate.  EPalFarmCropState::Harvestable = 4 (Pal_enums.hpp:1745).
+    local estado
+    pcall(function() estado = planta.CurrentState end)
+    if estado ~= 4 then
+        for _, n in ipairs(IRMAOS_PRISMA) do
+            local c = pegaComp(planta, n)
+            if c and conta(c) > 0 then pcall(function() c:ClearInstances() end) end
+        end
+        feitos[chave] = nil     -- quando voltar a ser colhivel, redistribui de novo
+        return
+    end
+
     local nomes = alvosColhiveis(planta)
     if #nomes == 0 then
         aviso("sem-sets", "nao consegui ler GrowupProcessSets -- visual desligado")

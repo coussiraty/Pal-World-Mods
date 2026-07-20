@@ -35,3 +35,6 @@ palschema-mods/*/resources/images/*.png
 
 # releases binarios (vao pro Nexus, nao pro git)
 /dist/
+
+# backups que o Vortex cria ao dar deploy
+*.vortex_backup
