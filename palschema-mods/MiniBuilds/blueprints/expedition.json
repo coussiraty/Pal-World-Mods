@@ -1,0 +1,11 @@
+{
+    "BP_BuildObject_Expedition_C": {
+        "SM_PalExpeditionFacilities": { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
+        "NS_Dungeon_Gate_In":         { "RelativeScale3D": { "X": 0.375, "Y": 0.375, "Z": 0.25 } },
+        "CheckOverlapCollision":      { "BoxExtent": { "X": 316.98, "Y": 123.32, "Z": 90.39 } },
+        "Box":                        { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
+        "BuildWorkableBounds":        { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
+        "PalLimitVolumeBox":          { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
+        "BlockNavmesh":               { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } }
+    }
+}
