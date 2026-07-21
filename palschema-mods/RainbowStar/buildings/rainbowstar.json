@@ -1,7 +1,7 @@
 {
     "RainbowStar_Plantation": {
-        "Name": "Plantação Prismática",
-        "Description": "Plantação arco-íris. Uma colheita rende as sete culturas de uma vez.",
+        "Name": "Prismatic Plantation",
+        "Description": "A rainbow plantation. One harvest yields all seven crops at once.",
         "BlueprintClassName": "BP_BuildObject_RainbowStar",
         "BlueprintClassSoft": "/Game/Mods/RainbowStar/BP_BuildObject_RainbowStar.BP_BuildObject_RainbowStar_C",
         "IconTexture": "$resource/RainbowStar/rainbow",
@@ -47,8 +47,8 @@
             "UnlockBuildObjects": [ "RainbowStar_Plantation" ],
             "IconName": "RainbowStar_Plantation",
             "IsBossTechnology": false,
-            "Name": "Plantação Prismática",
-            "Description": "Desbloqueia a Plantação Prismática, que rende as sete culturas.",
+            "Name": "Prismatic Plantation",
+            "Description": "Unlocks the Prismatic Plantation, which yields all seven crops.",
             "LevelCap": 4,
             "Cost": 0
         }

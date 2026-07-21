@@ -2,8 +2,12 @@
 --  Rainbow Star  --  Plantacao Prismatica: uma colheita, as 7 culturas
 --
 --  Duas metades:
---   1. COLHEITA: ao colher a RainbowStar_Plantation, larga no canteiro as 7
---      culturas do jeito nativo (recolhe andando por cima, pals levam pro bau).
+--   1. COLHEITA: a colheita NATIVA rende Berries de verdade. A engine acha a
+--      planta pelo NOME DA ROW ("RainbowStar", unico) -- provado no binario:
+--      UPalMasterDataTableAccessBase::FindRow_Internal. O CropItemId da row so
+--      decide o item colhido, entao pomos "Berries" (cultivo real) ali: ZERO
+--      item fantasma. O Lua so complementa largando as OUTRAS 6 culturas no
+--      canteiro (recolhe andando por cima, pals levam pro bau).
 --   2. VISUAL PRISMATICO: o canteiro cresce so com framboesa (o jogo enche um
 --      unico ISM por estagio); aqui as mudas sao repartidas entre 7 ISMs, um
 --      por cultura, pra o canteiro mostrar as 7 plantas de verdade.
@@ -24,6 +28,10 @@
 
 local CONFIG = {
     AnchorMapObjectId = "RainbowStar_Plantation",
+    -- 2 rows: a row-nome "RainbowStar" (CropItemId=RainbowStarCrop, num=0) so serve
+    -- de ROTULO ("Colheita Prismatica") e NAO larga nada; a row-campo
+    -- "RainbowStar_Model" (CropItemId=RainbowStar) faz o modelo nascer. Como a
+    -- colheita nativa nao larga nada, o Lua larga as 7 culturas.
     Culturas = {
         { id = "Berries", num = 10 },
         { id = "Wheat",   num = 10 },
@@ -34,7 +42,7 @@ local CONFIG = {
         { id = "Potato",  num = 10 },
     },
     AlturaDrop = 100.0,   -- cm acima do canteiro
-    Log = true,
+    Log = false,   -- release: sem log de debug (poe true so pra diagnosticar)
 }
 
 local function log(m) print("[RainbowStar] " .. tostring(m) .. "\n") end
@@ -222,7 +230,7 @@ end)
 --  partir dele -- por isso os nomes dos irmaos precisam estar listados aqui.
 -- =====================================================================
 
-local INTERVALO = 3000     -- ms entre passes
+local INTERVALO = 5000     -- ms entre passes (5s: alivia o FindAllOf periodico)
 local MIN_MUDAS = 7        -- abaixo disso nao ha o que repartir
 local IRMAOS_PRISMA = { "RS_Prisma_Wheat", "RS_Prisma_Tomato", "RS_Prisma_Lettuce",
                         "RS_Prisma_Carrot", "RS_Prisma_Onion", "RS_Prisma_Potato" }
@@ -319,8 +327,15 @@ local function estaEmpilhado(a, b)
 end
 
 local feitos = {}          -- memo do passe anterior; reconstruido a cada passe
+local origem = {}          -- chave -> snapshot das transforms pristinas (16). Repartir
+                           -- SEMPRE do snapshot torna imune a deplecao entre colheitas.
+local diagFeito = {}       -- 1 linha de diagnostico por (planta, estado)
 local vistosAgora = {}
 local avisado = {}         -- 1 aviso por assinatura de problema
+
+local DIAG_COMPS = { "CropISM", "GrassISM", "GrowupISM",
+                     "RS_Prisma_Wheat", "RS_Prisma_Tomato", "RS_Prisma_Lettuce",
+                     "RS_Prisma_Carrot", "RS_Prisma_Onion", "RS_Prisma_Potato" }
 
 local function aviso(chave, msg)
     if not CONFIG.Log or avisado[chave] then return end
@@ -328,95 +343,81 @@ local function aviso(chave, msg)
     log("[prisma] " .. msg)
 end
 
-local function repartir(planta)
+-- reparte UMA planta. Chamado por EVENTO (OnUpdateState) ou pelo catch-up do load.
+-- estadoOverride: o Next da transicao (autoritativo); se nil, le CurrentState.
+local function repartir(planta, estadoOverride)
     if not alive(planta) then return end
 
     local chave = "?"
     pcall(function() chave = planta:GetFullName() end)
     if string.find(chave, "Default__", 1, true) then return end   -- CDO
     if not ehNossa(planta) then return end                        -- canteiro vanilla
-    vistosAgora[chave] = true
 
-    -- GATE POR ESTAGIO: as culturas maduras (RS_Prisma_*) so podem aparecer no
-    -- estagio COLHIVEL. Durante o crescimento (semear/regar/crescer) elas TEM que
-    -- ficar vazias, senao o canteiro mostra tudo maduro cedo demais (o bug que o
-    -- usuario viu). O jogo esconde os brotos/mudas certos por estagio via o
-    -- GrowupProcessSets -- mas os irmaos prismaticos NAO estao la, entao quem os
-    -- segura e' este gate.  EPalFarmCropState::Harvestable = 4 (Pal_enums.hpp:1745).
-    local estado
-    pcall(function() estado = planta.CurrentState end)
+    local estado = estadoOverride
+    if type(estado) ~= "number" then          -- Next:get() de enum pode nao vir numerico
+        estado = nil
+        pcall(function() estado = planta.CurrentState end)
+    end
+
+    -- DIAGNOSTICO: 1 linha por (planta, estado) com a contagem de cada ISM + o
+    -- tamanho do snapshot. Revela o ciclo de vida das instancias entre colheitas.
+    if CONFIG.Log then
+        local marca = chave .. "|" .. tostring(estado)
+        if not diagFeito[marca] then
+            diagFeito[marca] = true
+            local partes = {}
+            for _, n in ipairs(DIAG_COMPS) do
+                local c = pegaComp(planta, n)
+                if c then partes[#partes + 1] = (n:gsub("RS_Prisma_", "")) .. "=" .. conta(c) end
+            end
+            log("[diag] estado=" .. tostring(estado) .. " snap=" ..
+                (origem[chave] and #origem[chave] or 0) .. " | " .. table.concat(partes, " "))
+        end
+    end
+
+    -- GATE POR ESTAGIO: as culturas maduras (RS_Prisma_*) so aparecem no estagio
+    -- COLHIVEL (4). Nos outros estagios, limpa os irmaos pra o canteiro mostrar so
+    -- os brotos (que o jogo controla via GrowupProcessSets; os irmaos nao estao la).
+    -- Limpar aqui NAO perde nada: o snapshot (origem[chave]) preserva as 16 mudas.
+    -- EPalFarmCropState::Harvestable = 4 (Pal_enums.hpp:1745).
     if estado ~= 4 then
         for _, n in ipairs(IRMAOS_PRISMA) do
             local c = pegaComp(planta, n)
             if c and conta(c) > 0 then pcall(function() c:ClearInstances() end) end
         end
-        feitos[chave] = nil     -- quando voltar a ser colhivel, redistribui de novo
+        feitos[chave] = nil
         return
     end
 
-    local nomes = alvosColhiveis(planta)
-    if #nomes == 0 then
-        aviso("sem-sets", "nao consegui ler GrowupProcessSets -- visual desligado")
-        return
-    end
-    -- soma os 6 irmaos (ficam fora do GrowupProcessSets de proposito)
-    local vistos = {}
-    for _, n in ipairs(nomes) do vistos[n] = true end
+    if feitos[chave] then return end                     -- ja repartido neste ciclo (saida cedo = sem lag)
+
+    -- 7 alvos FIXOS: CropISM (base/framboesa) + os 6 irmaos. NAO dependemos mais do
+    -- GrowupProcessSets: o alvosColhiveis as vezes nao devolvia o CropISM -> snap=0
+    -- (canteiro so com brotos) e ainda re-tentava todo passe (= o lag que se sentia).
+    local crop = pegaComp(planta, "CropISM")
+    local comps = {}
+    if crop then comps[#comps + 1] = crop end
     for _, n in ipairs(IRMAOS_PRISMA) do
-        if not vistos[n] then nomes[#nomes + 1] = n end
-    end
-
-    local comps, faltando = {}, {}
-    for _, n in ipairs(nomes) do
         local c = pegaComp(planta, n)
-        if c then comps[#comps + 1] = c else faltando[#faltando + 1] = n end
+        if c then comps[#comps + 1] = c end
     end
-    if #faltando > 0 then
-        aviso("faltando", "componentes que o ator nao expoe: " .. table.concat(faltando, ","))
-    end
-    if #comps == 0 then return end
+    if #comps < 2 then return end                        -- ator ainda nao expos os ISMs
 
-    -- de onde vem as transforms: quem tiver mais instancias
-    local maior, nMaior, total = nil, 0, 0
-    for _, c in ipairs(comps) do
-        local n = conta(c)
-        total = total + n
-        if n > nMaior then maior, nMaior = c, n end
-    end
-
-    if total == 0 then
-        feitos[chave] = nil                     -- colhido/arrancado: reparte de novo depois
-        return
-    end
-    if nMaior < MIN_MUDAS then return end        -- ainda brotando
-    if feitos[chave] then return end
-
-    -- ja esta repartido? (so da pra saber com 2+ componentes com instancia)
-    if #comps > 1 then
-        local a, b
-        for _, c in ipairs(comps) do
-            if conta(c) > 0 then
-                if not a then a = c elseif not b then b = c end
-            end
+    -- SNAPSHOT (uma vez): posicoes DIRETO do CropISM, a base que o jogo SEMPRE enche
+    -- no estagio colhivel. Robusto: nunca da snap=0 com o CropISM cheio.
+    if not origem[chave] and crop then
+        local todas = {}
+        local n = conta(crop)
+        for i = 0, n - 1 do
+            local t = transformDa(crop, i)
+            if t then todas[#todas + 1] = t end
         end
-        if a and b and estaEmpilhado(a, b) == false then
-            feitos[chave] = true
-            return                              -- ja repartido
-        end
+        if #todas >= MIN_MUDAS then origem[chave] = todas end
     end
+    local fonte = origem[chave]
+    if not fonte or #fonte < MIN_MUDAS then return end   -- CropISM ainda enchendo
 
-    -- 1) guarda as transforms da fonte
-    local tr = {}
-    for i = 0, nMaior - 1 do
-        local t = transformDa(maior, i)
-        if t then tr[#tr + 1] = t end
-    end
-    if #tr < MIN_MUDAS then
-        aviso("transforms", string.format("li so %d de %d transforms -- adiando", #tr, nMaior))
-        return
-    end
-
-    -- 2) zera todos e reparte em rodizio
+    -- zera todos e reparte o snapshot em rodizio (posicao i -> cultura i%7)
     for _, c in ipairs(comps) do
         if not pcall(function() c:ClearInstances() end) then
             aviso("clear", "ClearInstances falhou -- abortei pra nao deixar pela metade")
@@ -424,37 +425,85 @@ local function repartir(planta)
         end
     end
     local postos = 0
-    for i, t in ipairs(tr) do
+    for i, t in ipairs(fonte) do
         local destino = comps[((i - 1) % #comps) + 1]
         if alive(destino) and pcall(function() destino:AddInstance(t, false) end) then
             postos = postos + 1
         end
     end
-
     feitos[chave] = true
     if CONFIG.Log then
-        log(string.format("planta prismatica: %d mudas repartidas em %d culturas", postos, #comps))
+        log(string.format("planta prismatica: %d mudas repartidas em %d culturas (snap=%d)",
+            postos, #comps, #fonte))
     end
 end
 
 if not _G.__RS_PRISMA then
     _G.__RS_PRISMA = true
-    local function passe()
-        vistosAgora = {}
-        local l = FindAllOf("PalMapObjectFarmCrop")
-        if l then
-            for i = 1, #l do pcall(repartir, l[i]) end
+    local pendentes = {}     -- crop aguardando distribuir (retry ate o CropISM encher)
+
+    local function enfileira(crop)
+        if not alive(crop) then return end
+        local k; pcall(function() k = crop:GetFullName() end)
+        if k and not string.find(k, "Default__", 1, true) and not pendentes[k] then
+            pendentes[k] = { crop = crop, tries = 0 }
         end
-        -- poda o memo: so sobrevive quem foi visto neste passe (sem vazamento)
-        local novo = {}
-        for k in pairs(vistosAgora) do if feitos[k] then novo[k] = true end end
-        feitos = novo
     end
+
+    local function jaTem7(crop)   -- algum irmao com instancia = as 7 ja estao la
+        local ok = false
+        pcall(function()
+            local w = pegaComp(crop, "RS_Prisma_Wheat")
+            ok = w ~= nil and conta(w) > 0
+        end)
+        return ok
+    end
+
+    -- EVENTO: ao virar colhivel (4), ENTRA NA FILA. O retry resolve o timing (o jogo
+    -- enche o CropISM um instante DEPOIS da transicao). Ao sair do colhivel, limpa.
+    RegisterHook("/Script/Pal.PalBuildObjectFarmBlockV2:OnUpdateState_ServerInternal",
+    function(Context, _Last, Next)
+        pcall(function()
+            local building = Context:get()
+            if not alive(building) then return end
+            local crop = building.CropActor
+            if not alive(crop) or not ehNossa(crop) then return end
+            local nxt; pcall(function() nxt = Next:get() end)
+            if type(nxt) == "number" and nxt == 4 then enfileira(crop)
+            else pcall(repartir, crop, nxt) end
+        end)
+    end)
+
+    -- LOOP LEVE: idle = so um next(pendentes). O FindAllOf so roda ~10x nos primeiros
+    -- ~20s (catch-up dos ja-colhiveis enquanto o mundo carrega -- conserta o "visual
+    -- errado no load"); depois disso, so a fila (retry). Custo ~zero fora dos 20s iniciais.
     if type(LoopInGameThreadWithDelay) == "function" then
-        pcall(LoopInGameThreadWithDelay, INTERVALO, passe)
-    else
-        log("AVISO: LoopInGameThreadWithDelay indisponivel -- visual prismatico desligado")
+        pcall(LoopInGameThreadWithDelay, 4000, function()
+            -- POLL a cada 4s: enfileira todo canteiro colhivel (estado 4) que ainda NAO
+            -- tem as 7 (jaTem7=false). Pega o momento estado-4 SEMPRE -- o evento sozinho
+            -- nao pegava (0 distribuicoes). E conserta o load: quando o jogo re-popula a
+            -- base, jaTem7 vira false e o poll re-distribui. (O loop NAO e o teu soluco.)
+            local l = FindAllOf("PalMapObjectFarmCrop")
+            if l then for i = 1, #l do
+                local c = l[i]
+                if alive(c) and ehNossa(c) then
+                    local st; pcall(function() st = c.CurrentState end)
+                    if st == 4 and not jaTem7(c) then enfileira(c) end
+                end
+            end end
+            -- retry dos pendentes (ate o CropISM encher)
+            for k, item in pairs(pendentes) do
+                if not alive(item.crop) or jaTem7(item.crop) then
+                    pendentes[k] = nil
+                else
+                    item.tries = item.tries + 1
+                    pcall(repartir, item.crop, 4)
+                    if jaTem7(item.crop) or item.tries >= 8 then pendentes[k] = nil end
+                end
+            end
+        end)
     end
+    log("visual prismatico: poll 4s + retry (pega o estado-colhivel sempre)")
 end
 
 
