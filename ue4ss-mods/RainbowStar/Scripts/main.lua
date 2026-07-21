@@ -55,113 +55,66 @@ end
 
 
 -- =====================================================================
---  1. COLHEITA -- larga as 7 culturas NO CHAO do canteiro
+--  1. COLHEITA -- larga as 7 culturas NO CHAO (drop NATIVO, ZERO inventario)
 --
---  Por que no chao e NAO no inventario de um jogador (mudanca da v1.3):
---   * A colheita pode ser feita por um PAL (base automatica) -> NAO existe
---     "jogador colhedor". O codigo antigo achava o inventario com
---     FindFirstOf("PalPlayerState"), que pega sempre UM jogador (o host).
---   * Com 2 colheitas simultaneas (2 pals ou 2 players), as duas caiam no MESMO
---     inventario; e RequestDrop_ToServer e DEFERIDO -> o SlotIndex lido por uma
---     ficava velho quando a outra largava -> ITEM APAGADO. (bug do multiplayer)
---
---  ROTA (a que FUNCIONA): AddItem_ServerInternal -> RequestDrop_ToServer.
---  AddItem poe os 7 crops num slot; RequestDrop LARGA esses slots NO CHAO em 'loc'
---  (autopickup: player perto pega; senao fica no chao pros PALS levarem pro bau).
---  STACK FIX: larga SO a quantidade colhida (min) -> nunca toca no estoque do
---  jogador (era o bug de perda de item da v1.2, que largava a pilha inteira).
---  (RE 2026-07-21: NAO ha UFunction pra largar item arbitrario numa posicao; a
---   UPalIncidentBase:DropItem do header NAO e chamavel -> crasha. Esta e a rota boa.)
+--  RE 2026-07-21 achou a familia de UFunctions do drop nativo (spawna a MESMA classe da
+--  colheita vanilla, PalMapObjectDropItemModel, via Pal_DropItems_Core @ 0x142F96380).
+--  A que FUNCIONOU in-game: PalRandomIncidentMapObjectSpawner:SpawnDropItem(FName, num,
+--  FVector offset). (A PalIncidentBase:DropItem de 4 args existe mas o marshalling do 4o
+--  arg falha no UE4SS.) SpawnDropItem larga em loc_do_spawner + offset -> passo
+--  offset = alvo - loc_do_spawner pra cair EXATO no canteiro (confirmado in-game). Zero
+--  inventario: sem "item na mochila", sem bug de mochila cheia, pals levam pro bau; player
+--  pega no F. Reusa um spawner vivo (FindFirstOf) ou spawna um CONCRETO. NUNCA
+--  StaticConstructObject de UPalIncidentBase (abstrata -> crash; foi o erro antigo).
 -- =====================================================================
 
-local function inventario()
-    local ps = FindFirstOf("PalPlayerState")
-    if alive(ps) then
-        local inv = nil
-        pcall(function() inv = ps:GetInventoryData() end)
-        if alive(inv) then return inv end
-        pcall(function() inv = ps.InventoryData end)
-        if alive(inv) then return inv end
+local INCIDENTE = nil   -- instancia de PalIncidentBase reaproveitada (drop nativo)
+local function achaIncidente()
+    if alive(INCIDENTE) then return INCIDENTE end
+    -- 1. reusa uma instancia ja viva no mundo (subclasse concreta ou a base)
+    for _, cls in ipairs({ "PalRandomIncidentMapObjectSpawner", "PalIncidentBase" }) do
+        local x = FindFirstOf(cls)
+        if alive(x) then INCIDENTE = x; return INCIDENTE end
     end
-    local l = FindAllOf("PalPlayerInventoryData")
-    if l then
-        for _, x in ipairs(l) do
-            local n = ""
-            pcall(function() n = x:GetFullName() end)
-            if alive(x) and not string.find(n, "Default__") then return x end
-        end
-    end
-    return nil
-end
-
-local function redeItem()
-    local l = FindAllOf("PalNetworkItemComponent")
-    if l then for _, n in ipairs(l) do if alive(n) then return n end end end
-    return nil
-end
-
--- acha os slots das culturas que ACABAMOS de adicionar; Num = SO o adicionado (stack fix).
-local function slotsDe(inv, procurados)
-    local achados = {}
+    -- 2. senao, spawna um PalRandomIncidentMapObjectSpawner (classe CONCRETA) e reusa
     pcall(function()
-        local mh = inv.InventoryMultiHelper
-        local conts = mh and mh.Containers
-        if not conts then return end
-        for ci = 1, conts:GetArrayNum() do
-            local cont = conts[ci]
-            if alive(cont) then
-                local cid = cont:GetId()
-                local slots = cont.ItemSlotArray
-                if slots then
-                    for i = 1, slots:GetArrayNum() do
-                        local s = slots[i]
-                        if alive(s) then
-                            local id = s.ItemId.StaticId:ToString()
-                            local n = s.StackCount
-                            local querido = procurados[id]
-                            if querido and n and n > 0 then
-                                local largar = (querido < n) and querido or n   -- STACK FIX: so o colhido
-                                achados[#achados + 1] =
-                                    { SlotId = { ContainerId = cid, SlotIndex = s.SlotIndex }, Num = largar }
-                                procurados[id] = nil
-                            end
-                        end
-                    end
-                end
-            end
-        end
+        local UEHelpers = require("UEHelpers")
+        local C = StaticFindObject("/Script/Pal.PalRandomIncidentMapObjectSpawner")
+        local GS, W = UEHelpers.GetGameplayStatics(), UEHelpers.GetWorld()
+        local KML = UEHelpers.GetKismetMathLibrary()
+        if not (C and GS and W and KML) then return end
+        local T = KML:MakeTransform({ X = 0.0, Y = 0.0, Z = 0.0 },
+                                    { Pitch = 0.0, Yaw = 0.0, Roll = 0.0 }, { X = 1.0, Y = 1.0, Z = 1.0 })
+        local A = GS:BeginDeferredActorSpawnFromClass(W, C, T, 1, nil)
+        if alive(A) then GS:FinishSpawningActor(A, T); INCIDENTE = A end
     end)
-    return achados
+    if alive(INCIDENTE) then return INCIDENTE end
+    return nil
 end
 
--- AddItem poe os 7 num slot -> RequestDrop LARGA no chao em 'loc' (pals levam pro bau).
+-- DROP NATIVO (zero inventario, igual vanilla): SpawnDropItem do spawner de incidente.
+-- SpawnDropItem larga em (loc_do_spawner + offset); entao offset = alvo - loc_do_spawner
+-- faz cair EXATO no canteiro, seja qual for a posicao do spawner (confirmado in-game).
+-- Materializa o PalMapObjectDropItemModel: o mesmo pickup haulable da colheita vanilla
+-- (pals levam pro bau; player pega apertando F).
 local function dropNoChao(loc, actor)
-    local inv = inventario()
-    if not alive(inv) then return false, "sem inventario" end
-    local nic = redeItem()
-    if not alive(nic) then return false, "sem PalNetworkItemComponent" end
-    local procurados, entregues = {}, {}
+    local sp = achaIncidente()
+    if not alive(sp) then return false, "sem spawner de incidente (drop nativo indisponivel)" end
+    local alvo = { X = loc.X, Y = loc.Y, Z = loc.Z + CONFIG.AlturaDrop }
+    local sl = { X = 0.0, Y = 0.0, Z = 0.0 }
+    pcall(function() local v = sp:K2_GetActorLocation(); if v then sl = v end end)
+    local off = { X = alvo.X - sl.X, Y = alvo.Y - sl.Y, Z = alvo.Z - sl.Z }
+    local deu = {}
     for _, c in ipairs(CONFIG.Culturas) do
-        local res = nil
-        local ok = pcall(function()
-            res = inv:AddItem_ServerInternal(FName(c.id), c.num, false, 0.0, false)
-        end)
-        if ok and res ~= nil then
-            procurados[c.id] = c.num
-            entregues[#entregues + 1] = c.id
+        if pcall(function() sp:SpawnDropItem(FName(c.id), c.num, off) end) then
+            deu[#deu + 1] = c.id
         end
     end
-    if #entregues == 0 then return false, "AddItem nao entregou nada (mochila cheia?)" end
-    local froms = slotsDe(inv, procurados)
-    if #froms == 0 then return false, "itens entraram mas nao achei os slots" end
-    local ok = pcall(function()
-        nic:RequestDrop_ToServer(froms,
-            { X = loc.X, Y = loc.Y, Z = loc.Z + CONFIG.AlturaDrop }, true)   -- true = autopickup
-    end)
-    if not ok then return false, "RequestDrop_ToServer falhou" end
-    return true, string.format("%d culturas no chao: %s", #entregues, table.concat(entregues, ","))
+    if #deu == 0 then return false, "SpawnDropItem nao largou nada" end
+    return true, string.format("NATIVO @ (%.0f,%.0f,%.0f): %s", alvo.X, alvo.Y, alvo.Z, table.concat(deu, ","))
 end
 
+local _colheitaN = 0
 RegisterHook("/Script/Pal.PalMapObjectFarmBlockV2ModelStateBehaviourHarvestable:OnFinishWorkInServer",
 function(Context, WorkParam)
     local ok, err = pcall(function()
@@ -172,6 +125,13 @@ function(Context, WorkParam)
 
         local id = "?"
         pcall(function() id = model:TryGetMapObjectId():ToString() end)
+        _colheitaN = _colheitaN + 1
+        -- LOG DE TUDO: id de TODA colheita (revela canteiro nao-nosso passando, ou
+        -- colheita disparando quando VOCE nao colhe = pal colhendo).
+        if CONFIG.Log then
+            log(string.format("[hook #%d] OnFinishWork id=%s nossa=%s",
+                _colheitaN, id, tostring(id == CONFIG.AnchorMapObjectId)))
+        end
         if id ~= CONFIG.AnchorMapObjectId then return end
 
         local loc, actor = nil, nil
