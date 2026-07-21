@@ -55,12 +55,25 @@ end
 
 
 -- =====================================================================
---  1. COLHEITA -- larga as 7 culturas no canteiro
+--  1. COLHEITA -- larga as 7 culturas NO CHAO do canteiro
+--
+--  Por que no chao e NAO no inventario de um jogador (mudanca da v1.3):
+--   * A colheita pode ser feita por um PAL (base automatica) -> NAO existe
+--     "jogador colhedor". O codigo antigo achava o inventario com
+--     FindFirstOf("PalPlayerState"), que pega sempre UM jogador (o host).
+--   * Com 2 colheitas simultaneas (2 pals ou 2 players), as duas caiam no MESMO
+--     inventario; e RequestDrop_ToServer e DEFERIDO -> o SlotIndex lido por uma
+--     ficava velho quando a outra largava -> ITEM APAGADO. (bug do multiplayer)
+--
+--  ROTA (a que FUNCIONA): AddItem_ServerInternal -> RequestDrop_ToServer.
+--  AddItem poe os 7 crops num slot; RequestDrop LARGA esses slots NO CHAO em 'loc'
+--  (autopickup: player perto pega; senao fica no chao pros PALS levarem pro bau).
+--  STACK FIX: larga SO a quantidade colhida (min) -> nunca toca no estoque do
+--  jogador (era o bug de perda de item da v1.2, que largava a pilha inteira).
+--  (RE 2026-07-21: NAO ha UFunction pra largar item arbitrario numa posicao; a
+--   UPalIncidentBase:DropItem do header NAO e chamavel -> crasha. Esta e a rota boa.)
 -- =====================================================================
 
--- ROTA 1 (a boa): inventario -> RequestDrop_ToServer com autopickup. Mesmo
--- pipeline do botao "largar", entao o item nasce identico ao drop de colheita.
--- ATENCAO: GetInventoryData() vive no APalPlayerState, NAO no Controller.
 local function inventario()
     local ps = FindFirstOf("PalPlayerState")
     if alive(ps) then
@@ -87,6 +100,7 @@ local function redeItem()
     return nil
 end
 
+-- acha os slots das culturas que ACABAMOS de adicionar; Num = SO o adicionado (stack fix).
 local function slotsDe(inv, procurados)
     local achados = {}
     pcall(function()
@@ -99,14 +113,16 @@ local function slotsDe(inv, procurados)
                 local cid = cont:GetId()
                 local slots = cont.ItemSlotArray
                 if slots then
-                    for i = 1, slots:GetArrayNum() do    -- rele Num a cada volta
+                    for i = 1, slots:GetArrayNum() do
                         local s = slots[i]
                         if alive(s) then
                             local id = s.ItemId.StaticId:ToString()
                             local n = s.StackCount
-                            if procurados[id] and n and n > 0 then
+                            local querido = procurados[id]
+                            if querido and n and n > 0 then
+                                local largar = (querido < n) and querido or n   -- STACK FIX: so o colhido
                                 achados[#achados + 1] =
-                                    { SlotId = { ContainerId = cid, SlotIndex = s.SlotIndex }, Num = n }
+                                    { SlotId = { ContainerId = cid, SlotIndex = s.SlotIndex }, Num = largar }
                                 procurados[id] = nil
                             end
                         end
@@ -118,12 +134,12 @@ local function slotsDe(inv, procurados)
     return achados
 end
 
-local function dropNativo(loc)
+-- AddItem poe os 7 num slot -> RequestDrop LARGA no chao em 'loc' (pals levam pro bau).
+local function dropNoChao(loc, actor)
     local inv = inventario()
-    if not inv then return false, "sem inventario" end
+    if not alive(inv) then return false, "sem inventario" end
     local nic = redeItem()
-    if not nic then return false, "sem PalNetworkItemComponent" end
-
+    if not alive(nic) then return false, "sem PalNetworkItemComponent" end
     local procurados, entregues = {}, {}
     for _, c in ipairs(CONFIG.Culturas) do
         local res = nil
@@ -131,52 +147,19 @@ local function dropNativo(loc)
             res = inv:AddItem_ServerInternal(FName(c.id), c.num, false, 0.0, false)
         end)
         if ok and res ~= nil then
-            procurados[c.id] = true
+            procurados[c.id] = c.num
             entregues[#entregues + 1] = c.id
         end
     end
     if #entregues == 0 then return false, "AddItem nao entregou nada (mochila cheia?)" end
-
     local froms = slotsDe(inv, procurados)
     if #froms == 0 then return false, "itens entraram mas nao achei os slots" end
-
     local ok = pcall(function()
         nic:RequestDrop_ToServer(froms,
             { X = loc.X, Y = loc.Y, Z = loc.Z + CONFIG.AlturaDrop }, true)   -- true = autopickup
     end)
     if not ok then return false, "RequestDrop_ToServer falhou" end
-    return true, string.format("%d slots: %s", #froms, table.concat(entregues, ","))
-end
-
--- ROTA 2 (reserva): spawner de incidente, offset relativo ao ator. Funciona,
--- mas o pickup exige interagir. NAO destruir o ator: leva os itens junto.
-local SPAWNER = nil
-local function dropReserva(loc)
-    local UEHelpers = require("UEHelpers")
-    local KML = UEHelpers.GetKismetMathLibrary()
-    if alive(SPAWNER) then
-        pcall(function()
-            SPAWNER:K2_SetActorLocation({ X = loc.X, Y = loc.Y, Z = loc.Z }, false, {}, false)
-        end)
-    else
-        local C = StaticFindObject("/Script/Pal.PalRandomIncidentMapObjectSpawner")
-        local GS, W = UEHelpers.GetGameplayStatics(), UEHelpers.GetWorld()
-        if not (C and GS and KML and W) then return false, "sem spawner/UEHelpers" end
-        local T = KML:MakeTransform({ X = loc.X, Y = loc.Y, Z = loc.Z },
-                                    { Pitch = 0.0, Yaw = 0.0, Roll = 0.0 },
-                                    { X = 1.0, Y = 1.0, Z = 1.0 })
-        local A = GS:BeginDeferredActorSpawnFromClass(W, C, T, 1, nil)
-        if not alive(A) then return false, "spawn do ator falhou" end
-        GS:FinishSpawningActor(A, T)
-        SPAWNER = A
-    end
-    local deu = {}
-    for _, c in ipairs(CONFIG.Culturas) do
-        if pcall(function()
-            SPAWNER:SpawnDropItem(FName(c.id), c.num, { X = 0.0, Y = 0.0, Z = CONFIG.AlturaDrop })
-        end) then deu[#deu + 1] = c.id end
-    end
-    return #deu > 0, "reserva: " .. table.concat(deu, ",")
+    return true, string.format("%d culturas no chao: %s", #entregues, table.concat(entregues, ","))
 end
 
 RegisterHook("/Script/Pal.PalMapObjectFarmBlockV2ModelStateBehaviourHarvestable:OnFinishWorkInServer",
@@ -191,25 +174,19 @@ function(Context, WorkParam)
         pcall(function() id = model:TryGetMapObjectId():ToString() end)
         if id ~= CONFIG.AnchorMapObjectId then return end
 
-        local loc = nil
+        local loc, actor = nil, nil
         pcall(function()
-            local a = model:GetActor()
-            if alive(a) then loc = a:K2_GetActorLocation() end
+            actor = model:GetActor()
+            if alive(actor) then loc = actor:K2_GetActorLocation() end
         end)
         if not loc then
             if CONFIG.Log then log("colheita sem posicao do canteiro") end
             return
         end
 
-        local okn, info = dropNativo(loc)
-        if okn then
-            if CONFIG.Log then log("colheita -> " .. info) end
-            return
-        end
-        local okr, infor = dropReserva(loc)
+        local okc, info = dropNoChao(loc, actor)
         if CONFIG.Log then
-            log(string.format("colheita: rota 1 falhou (%s) | rota 2 %s (%s)",
-                info, okr and "ok" or "falhou", infor))
+            log(string.format("colheita no chao: %s (%s)", okc and "OK" or "FALHOU", info))
         end
     end)
     if not ok then log("ERRO no hook: " .. tostring(err)) end
