@@ -12,7 +12,7 @@
 -- =====================================================================
 local M = { VERSION = "hud-23 + xp-invest3 (Ctrl+Shift+I = lista Add*/Set* do pal p/ achar o XP writer)" }
 
-local LOGIC_PATH = "C:/Program Files (x86)/Steam/steamapps/common/Palworld/Pal/Binaries/Win64/ue4ss/Mods/RemoteExpedition/Scripts/logic.lua"
+-- (reload de debug agora usa require("logic") -- portavel, sem caminho absoluto)
 
 local function log(s) print("[RemoteExp/logic] " .. tostring(s) .. "\n") end
 local function safe(fn, d) local ok, v = pcall(fn); if ok and v ~= nil then return v end return d end
@@ -335,12 +335,31 @@ function M.openHUD()
     if isok(param) and isok(uimodel) then pcall(function() param.Model = uimodel end) end
     pcall(function() hud:AddHUD(widget, 0, param) end)
     M.focus()
+    -- foco periodico do widget de expedicao: SO na game thread.
+    -- (antes: LoopAsync(200) tocando HUD/widget FORA da game thread -> crash)
     pcall(function()
-        LoopAsync(200, function()
-            if not expeditionWidget() then return true end
-            M.focus()
-            return false
-        end)
+        if type(LoopInGameThreadWithDelay) == "function" then
+            local h
+            h = LoopInGameThreadWithDelay(200, function()
+                if not expeditionWidget() then
+                    if h and type(CancelDelayedAction) == "function" then pcall(CancelDelayedAction, h) end
+                    return true
+                end
+                M.focus()
+            end)
+            _G.__RE_FOCUS_HANDLE = h
+        else
+            -- fallback: flag de parada como upvalue (o retorno do LoopAsync seria
+            -- lido ANTES do callback da game thread rodar, e o laco nunca morreria).
+            local stop = false
+            LoopAsync(200, function()
+                if stop then return true end
+                ExecuteInGameThread(function()
+                    if not expeditionWidget() then stop = true else M.focus() end
+                end)
+                return false
+            end)
+        end
     end)
     log("openHUD: AddHUD + foco")
 end
@@ -504,7 +523,7 @@ local function bind(guard, key, fn)
         pcall(function() RegisterKeyBind(key, { ModifierKey.CONTROL, ModifierKey.SHIFT }, fn) end)
     end
 end
-bind("__RE_K", Key.K, function() pcall(function() dofile(LOGIC_PATH) end); if _G.__RE_recon then pcall(_G.__RE_recon) end end)
+bind("__RE_K", Key.K, function() pcall(function() package.loaded["logic"] = nil; require("logic") end); if _G.__RE_recon then pcall(_G.__RE_recon) end end)
 bind("__RE_L", Key.L, function() if _G.__RE_close then pcall(_G.__RE_close) end end)
 bind("__RE_J", Key.J, function() if _G.__RE_open  then pcall(_G.__RE_open)  end end)
 bind("__RE_U", Key.U, function() if _G.__RE_start then pcall(_G.__RE_start) end end)
