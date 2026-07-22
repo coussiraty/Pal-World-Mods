@@ -1,9 +1,10 @@
 -- =====================================================================
 --  EarlyUnlock - casca (harness). So carrega a logic.lua no boot (portavel).
 --  Destrava cedo TODAS as selas/arreios de pal (+ incubadora, expedicao,
---  fazenda de reproducao) chamando a funcao NATIVA do jogo
---  (UPalTechnologyData:RequestUnlockRecipeTechnology) na game thread.
---  Auto ao entrar no mundo + atalho Ctrl+Shift+T pra destravar manualmente.
+--  fazenda de reproducao) DE GRACA: escreve o nome direto na lista
+--  UnlockedTechnologyNameArray do UPalTechnologyData e chama OnRep pra
+--  refrescar -- sem gastar ponto de tecnologia.
+--  Auto ao entrar no mundo + atalho Ctrl+Shift+T pra re-destravar manual.
 -- =====================================================================
 local MOD = "EarlyUnlock"
 local function log(s) print("[" .. MOD .. "] " .. tostring(s) .. "\n") end

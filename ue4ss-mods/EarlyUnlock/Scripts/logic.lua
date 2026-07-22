@@ -1,27 +1,24 @@
 -- =====================================================================
---  EarlyUnlock / logic.lua
---  Forca o unlock das tecnologias/selas cedo chamando a funcao NATIVA
---  UPalTechnologyData:RequestUnlockRecipeTechnology(FName) num objeto vivo
---  (a mesma que a UI da arvore de tech chama). Ignora nivel/pontos/pre-req
---  e NAO re-cobra custo. Rodar na GAME THREAD, depois do mundo carregar,
---  com autoridade (single-player ou host). A arvore fica NORMAL e as techs
---  aparecem destravadas nas posicoes vanilla + craftaveis.
+--  EarlyUnlock / logic.lua  (v1.1 - destrava TUDO, de graca)
+--  Destrava TODAS as selas/arreios de pal + 3 construcoes cedo, de GRACA:
+--  escreve o nome direto na lista UnlockedTechnologyNameArray do
+--  UPalTechnologyData (craftabilidade = Contains nessa lista), SEM passar pelo
+--  RequestUnlockRecipeTechnology (que COBRA ponto de tecnologia). Depois chama
+--  OnRep na mao pra refrescar. Dedupe pela funcao do jogo (IsUnlockRecipeTechnology)
+--  pra nao inchar o array.
 --
---  (O antigo UPalCheatManager:UnlockOneTechnology e um STUB vazio no build
---   de shipping -- retorna sem fazer nada. Comprovado via RE.)
---
---  ATALHO: Ctrl+Shift+T = destrava tudo agora (manual)
---  Tambem roda sozinho depois de entrar no mundo.
+--  O jogo mostra a sela de pal que voce nao tem como "Unknown Item" e revela
+--  quando voce pega o pal -- entao destravar tudo fica limpo.
+--  Roda sozinho no load (sem apertar nada). Ctrl+Shift+T = re-destravar manual.
 -- =====================================================================
-local M = { VERSION = "v1.0" }
+local M = { VERSION = "v1.1" }
 
-local LOG = false   -- true = escreve status no UE4SS.log (debug)
+local LOG = false   -- true = escreve status no UE4SS.log (debug); false no release
 local function log(s) if LOG then print("[EarlyUnlock] " .. tostring(s) .. "\n") end end
 local function safe(fn, d) local ok, v = pcall(fn); if ok and v ~= nil then return v end return d end
 local function isok(o) return o ~= nil and safe(function() return o:IsValid() end, false) end
 
--- ---------- lista de tecnologias a destravar ----------
--- 3 construcoes (cedo) + TODAS as selas/arreios (SkillUnlock_*)
+-- tudo que destrava: 3 construcoes cedo + TODAS as selas (SkillUnlock_*)
 local TECHS = {
     "Special_HatchingPalEgg", "Expedition", "BreedFarm",
     "SkillUnlock_Boar", "SkillUnlock_Kitsunebi", "SkillUnlock_Alpaca", "SkillUnlock_Garm",
@@ -59,36 +56,36 @@ local TECHS = {
 }
 M.TECHS = TECHS
 
--- ---------- destrava tudo (na GAME THREAD!) ----------
--- Chama a funcao nativa RequestUnlockRecipeTechnology(FName) no
--- UPalTechnologyData vivo (FindFirstOf ja pula o CDO). Retorna a qtd
--- destravada, ou -1 se o objeto ainda nao existe (mundo nao carregou)
--- pra gente tentar de novo depois.
-local function unlockAllNow()
+-- ---------- destrava UMA tech: append direto (GRATIS), deduped ----------
+local function unlockTech(td, arr, name)
+    if safe(function() return td:IsUnlockRecipeTechnology(FName(name)) end, false) == true then return false end
+    local cnt = safe(function() return arr:GetArrayNum() end, safe(function() return #arr end, 0))
+    return pcall(function() arr[cnt + 1] = FName(name) end) == true
+end
+
+-- ---------- destrava tudo (NA GAME THREAD) ----------
+-- retorna qtd nova destravada, ou -1 se PalTechnologyData nao existe ainda.
+local function unlockAll()
     local td = FindFirstOf("PalTechnologyData")
     if not isok(td) then return -1 end
+    local arr = safe(function() return td.UnlockedTechnologyNameArray end)
+    if not arr then return -1 end
     local n = 0
-    for _, name in ipairs(TECHS) do
-        if pcall(function() td:RequestUnlockRecipeTechnology(FName(name)) end) then n = n + 1 end
-    end
-    log(string.format("destravadas %d/%d techs (RequestUnlockRecipeTechnology)", n, #TECHS))
+    for _, name in ipairs(TECHS) do if unlockTech(td, arr, name) then n = n + 1 end end
+    if n > 0 then pcall(function() td:OnRep_UnlockedTechnologyNameArray() end) end   -- refresh
+    log(string.format("unlock: +%d tech(s) nova(s) destravada(s) (sem gastar ponto)", n))
     return n
 end
-M.unlockAll = unlockAllNow
+M.unlock = unlockAll
 
--- marshaling pra game thread (pode ser chamado de qualquer thread com seguranca)
-local function unlockAllSafe()
-    ExecuteInGameThread(function() unlockAllNow() end)
-end
-M.unlockAllSafe = unlockAllSafe
+local function unlockSafe() ExecuteInGameThread(function() unlockAll() end) end
+M.unlockSafe = unlockSafe
 
--- ---------- auto no load (1x por sessao, com algumas tentativas) ----------
+-- ---------- auto no load (retry ate PalTechnologyData existir) ----------
 local function autoTry(tries)
     tries = tries or 0
     ExecuteInGameThread(function()
-        local n = unlockAllNow()
-        -- n == -1 => PalTechnologyData ainda nao existe: tenta de novo
-        if n < 0 and tries < 12 then
+        if unlockAll() < 0 and tries < 12 then
             ExecuteWithDelay(3000, function() autoTry(tries + 1) end)
         end
     end)
@@ -97,7 +94,7 @@ end
 if not _G.__EarlyUnlock_hooked then
     _G.__EarlyUnlock_hooked = true
 
-    -- roda sozinho pouco depois de entrar no mundo
+    -- roda sozinho ao entrar no mundo (sem apertar nada)
     pcall(function()
         RegisterHook("/Script/Engine.PlayerController:ClientRestart", function()
             if _G.__EarlyUnlock_autoRan then return end
@@ -106,15 +103,15 @@ if not _G.__EarlyUnlock_hooked then
         end)
     end)
 
-    -- atalho manual: Ctrl+Shift+T
+    -- Ctrl+Shift+T: re-destravar manual (opcional)
     pcall(function()
         RegisterKeyBind(Key.T, { ModifierKey.CONTROL, ModifierKey.SHIFT }, function()
-            log("Ctrl+Shift+T -> destravando...")
-            unlockAllSafe()
+            log("Ctrl+Shift+T -> destravando tudo...")
+            unlockSafe()
         end)
     end)
 
-    log("pronto (" .. M.VERSION .. "). Auto no load + Ctrl+Shift+T (unlock). " .. #TECHS .. " techs.")
+    log("pronto (" .. M.VERSION .. "). Destrava tudo sozinho no load. " .. #TECHS .. " techs.")
 end
 
 return M
