@@ -1,17 +1,22 @@
 -- =====================================================================
 --  EarlyUnlock / logic.lua
---  Forca o unlock das tecnologias que a gente quer cedo, usando o
---  UPalCheatManager:UnlockOneTechnology(FName) -- que ignora nivel,
---  pontos de tecnologia, pre-requisitos e requisito de chefe.
---  Assim a arvore de tech fica NORMAL (sem 124 selas amontoadas no nv1),
---  mas tudo ja vem destravado/craftavel desde o inicio.
+--  Forca o unlock das tecnologias/selas cedo chamando a funcao NATIVA
+--  UPalTechnologyData:RequestUnlockRecipeTechnology(FName) num objeto vivo
+--  (a mesma que a UI da arvore de tech chama). Ignora nivel/pontos/pre-req
+--  e NAO re-cobra custo. Rodar na GAME THREAD, depois do mundo carregar,
+--  com autoridade (single-player ou host). A arvore fica NORMAL e as techs
+--  aparecem destravadas nas posicoes vanilla + craftaveis.
+--
+--  (O antigo UPalCheatManager:UnlockOneTechnology e um STUB vazio no build
+--   de shipping -- retorna sem fazer nada. Comprovado via RE.)
 --
 --  ATALHO: Ctrl+Shift+T = destrava tudo agora (manual)
---  Tambem roda sozinho ~5s depois de entrar no mundo.
+--  Tambem roda sozinho depois de entrar no mundo.
 -- =====================================================================
 local M = { VERSION = "v1.0" }
 
-local function log(s) print("[EarlyUnlock] " .. tostring(s) .. "\n") end
+local LOG = false   -- true = escreve status no UE4SS.log (debug)
+local function log(s) if LOG then print("[EarlyUnlock] " .. tostring(s) .. "\n") end end
 local function safe(fn, d) local ok, v = pcall(fn); if ok and v ~= nil then return v end return d end
 local function isok(o) return o ~= nil and safe(function() return o:IsValid() end, false) end
 
@@ -54,107 +59,39 @@ local TECHS = {
 }
 M.TECHS = TECHS
 
--- ---------- pega (ou constroi) um PalCheatManager de verdade ----------
--- O CheatManagerEnablerMod as vezes cria so um UCheatManager base (sem as
--- funcoes do Pal). Por isso a gente garante um UPalCheatManager.
-local function getPalCheatManager()
-    local c = _G.__EarlyUnlock_cm
-    if isok(c) then return c end
-
-    -- ja existe um PalCheatManager? (se sim, e o tipo certo)
-    local found = FindFirstOf("PalCheatManager")
-    if isok(found) then _G.__EarlyUnlock_cm = found; return found end
-
-    -- senao, constroi um no player controller
-    local pc = FindFirstOf("PalPlayerController")
-    if not isok(pc) then return nil end
-    local cls = StaticFindObject("/Script/Pal.PalCheatManager")
-    if not isok(cls) then return nil end
-    local cm = safe(function() return StaticConstructObject(cls, pc) end, nil)
-    if isok(cm) then
-        safe(function() pc.CheatManager = cm end)
-        _G.__EarlyUnlock_cm = cm
-        return cm
-    end
-    return nil
-end
-
--- ---------- destrava tudo ----------
-local function unlockAll()
-    local cm = getPalCheatManager()
-    if not isok(cm) then
-        log("CheatManager indisponivel — entra num mundo e usa Ctrl+Shift+T")
-        return 0
-    end
+-- ---------- destrava tudo (na GAME THREAD!) ----------
+-- Chama a funcao nativa RequestUnlockRecipeTechnology(FName) no
+-- UPalTechnologyData vivo (FindFirstOf ja pula o CDO). Retorna a qtd
+-- destravada, ou -1 se o objeto ainda nao existe (mundo nao carregou)
+-- pra gente tentar de novo depois.
+local function unlockAllNow()
+    local td = FindFirstOf("PalTechnologyData")
+    if not isok(td) then return -1 end
     local n = 0
     for _, name in ipairs(TECHS) do
-        if pcall(function() cm:UnlockOneTechnology(FName(name)) end) then n = n + 1 end
+        if pcall(function() td:RequestUnlockRecipeTechnology(FName(name)) end) then n = n + 1 end
     end
-    log(string.format("destravadas %d/%d tecnologias (selas + construcoes)", n, #TECHS))
+    log(string.format("destravadas %d/%d techs (RequestUnlockRecipeTechnology)", n, #TECHS))
     return n
 end
-M.unlockAll = unlockAll
+M.unlockAll = unlockAllNow
 
--- ---------- sonda: dumpa os row names das DataTables de receita ----------
--- Metodo confiavel: StaticFindObject na DataTable + GetRowNames() (retorna
--- TArray<FName>, que o UE4SS le direto). O metodo antigo via
--- GetRecipeTechlonogy vinha vazio (struct-por-valor com TArray aninhado).
-local BUILD_DT = "/Game/Pal/DataTable/MapObject/Building/DT_BuildObjectDataTable_Common.DT_BuildObjectDataTable_Common"
-local ITEM_DT  = "/Game/Pal/DataTable/Item/DT_ItemRecipeDataTable_Common.DT_ItemRecipeDataTable_Common"
-
-local function fnameStr(v)
-    return safe(function() return v:ToString() end, safe(function() return tostring(v) end, "?"))
+-- marshaling pra game thread (pode ser chamado de qualquer thread com seguranca)
+local function unlockAllSafe()
+    ExecuteInGameThread(function() unlockAllNow() end)
 end
-
-local function dumpTable(f, label, path)
-    local dt = safe(function() return StaticFindObject(path) end, nil)
-    if not isok(dt) then f:write("### " .. label .. ": NAO ACHOU (" .. path .. ")\n\n"); return 0 end
-    local rows = safe(function() return dt:GetRowNames() end, nil)
-    f:write("### " .. label .. " (type=" .. type(rows) .. ") ###\n")
-    local c = 0
-    if rows ~= nil then
-        -- metodo 1: ForEach (TArray-objeto do UE4SS)
-        pcall(function()
-            rows:ForEach(function(_, elem)
-                local v = safe(function() return elem:get() end, elem)
-                f:write(fnameStr(v) .. "\n"); c = c + 1
-            end)
-        end)
-        -- metodo 2: tabela Lua indexavel (#/[])
-        if c == 0 then pcall(function()
-            for i = 1, (safe(function() return #rows end, 0)) do
-                f:write(fnameStr(rows[i]) .. "\n"); c = c + 1
-            end
-        end) end
-        -- metodo 3: GetArrayNum + index
-        if c == 0 then pcall(function()
-            for i = 1, rows:GetArrayNum() do
-                f:write(fnameStr(rows[i]) .. "\n"); c = c + 1
-            end
-        end) end
-    end
-    f:write("### fim " .. label .. " (" .. c .. " rows) ###\n\n")
-    return c
-end
-
-local function dumpRecipes()
-    local path = "C:/Program Files (x86)/Steam/steamapps/common/Palworld/Pal/Binaries/Win64/ue4ss/Mods/EarlyUnlock/dump_recipes.txt"
-    local f = safe(function() return io.open(path, "w") end, nil)
-    if not f then log("nao consegui abrir dump_recipes.txt"); return end
-    local b = dumpTable(f, "BuildObject", BUILD_DT)
-    local i = dumpTable(f, "ItemRecipe", ITEM_DT)
-    f:close()
-    log(string.format("dump_recipes.txt escrito: %d build + %d item rows.", b, i))
-end
-M.dumpRecipes = dumpRecipes
+M.unlockAllSafe = unlockAllSafe
 
 -- ---------- auto no load (1x por sessao, com algumas tentativas) ----------
 local function autoTry(tries)
     tries = tries or 0
-    local n = unlockAll()
-    if n == 0 and tries < 4 then
-        ExecuteWithDelay(5000, function() autoTry(tries + 1) end)
-    end
+    ExecuteInGameThread(function()
+        local n = unlockAllNow()
+        -- n == -1 => PalTechnologyData ainda nao existe: tenta de novo
+        if n < 0 and tries < 12 then
+            ExecuteWithDelay(3000, function() autoTry(tries + 1) end)
+        end
+    end)
 end
 
 if not _G.__EarlyUnlock_hooked then
@@ -173,19 +110,11 @@ if not _G.__EarlyUnlock_hooked then
     pcall(function()
         RegisterKeyBind(Key.T, { ModifierKey.CONTROL, ModifierKey.SHIFT }, function()
             log("Ctrl+Shift+T -> destravando...")
-            unlockAll()
+            unlockAllSafe()
         end)
     end)
 
-    -- sonda de recipes: Ctrl+Shift+R
-    pcall(function()
-        RegisterKeyBind(Key.R, { ModifierKey.CONTROL, ModifierKey.SHIFT }, function()
-            log("Ctrl+Shift+R -> dumpando recipes...")
-            dumpRecipes()
-        end)
-    end)
-
-    log("pronto (" .. M.VERSION .. "). Auto no load + Ctrl+Shift+T (unlock) + Ctrl+Shift+R (dump recipes). " .. #TECHS .. " techs.")
+    log("pronto (" .. M.VERSION .. "). Auto no load + Ctrl+Shift+T (unlock). " .. #TECHS .. " techs.")
 end
 
 return M
