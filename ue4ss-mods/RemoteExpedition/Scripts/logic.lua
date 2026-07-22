@@ -5,16 +5,20 @@
 --  forco o modo de input UI + cursor (o que o Alt+Tab fazia na mao).
 --
 --  ATALHOS:
---    Ctrl+Shift+J = abre a tela de expedicao + foca (cliques funcionam)
+--    J (ou Ctrl+Shift+J) = abre/FECHA a tela de expedicao (com VALIDACAO)
 --    Ctrl+Shift+U = SO forca o foco (se abriu e o clique nao pegou)
 --    Ctrl+Shift+L = fecha a tela + devolve o controle do jogo
 --    Ctrl+Shift+K = recarrega esta logica (debug)
+--
+--  GATE do J (fix 2026-07-21) — antes de abrir, valida o estado:
+--    (1) NAO abre se voce esta digitando no chat/campo de texto (isso
+--        TRAVAVA o jogo); (2) se ja esta aberta, o J FECHA (toggle, nao
+--        empilha); (3) NAO abre por cima de outro menu (inventario/mapa/ESC).
 -- =====================================================================
-local M = { VERSION = "hud-23 + xp-invest3 (Ctrl+Shift+I = lista Add*/Set* do pal p/ achar o XP writer)" }
+local M = { VERSION = "v1.1 (J = abrir/FECHAR expedicao; fecha o stack certo)" }
 
--- (reload de debug agora usa require("logic") -- portavel, sem caminho absoluto)
-
-local function log(s) print("[RemoteExp/logic] " .. tostring(s) .. "\n") end
+local LOG = false   -- true = escreve diagnostico no UE4SS.log (debug)
+local function log(s) if LOG then print("[RemoteExp/logic] " .. tostring(s) .. "\n") end end
 local function safe(fn, d) local ok, v = pcall(fn); if ok and v ~= nil then return v end return d end
 local function isok(o) return o ~= nil and safe(function() return o:IsValid() end, false) end
 local function arrNum(a) return safe(function() return a:GetArrayNum() end, safe(function() return #a end, 0)) end
@@ -271,9 +275,16 @@ local function getModel() return FindFirstOf("PalMapObjectCharacterTeamMissionMo
 local function wbl() return StaticFindObject("/Script/UMG.Default__WidgetBlueprintLibrary") end
 local function expeditionWidget()
     local ws = FindAllOf("WBP_PalExpedition_C")
-    if ws and #ws > 0 then return ws[#ws] end
+    -- so vale um widget VALIDO (FindAllOf pode devolver um ja destruido)
+    if ws then for i = #ws, 1, -1 do if isok(ws[i]) then return ws[i] end end end
     return nil
 end
+
+-- ESTADO DE ABERTURA: o WBP fica valido na memoria mesmo fechado, e o
+-- PushWidgetStackableUI empilha aninhado (IsInViewport fica sempre false),
+-- entao nao da pra "adivinhar" pelo widget. Rastreamos por flag, setada no
+-- proprio M.open (sucesso) e M.close. Fonte da verdade = nossas acoes.
+--   _G.__RE_shown == true  -> a tela esta aberta
 
 -- ==== FOCAR: joga o input pra UI (o que o Alt+Tab fazia) ====
 function M.focus()
@@ -314,6 +325,11 @@ function M.open()
         if pcls then param = safe(function() return StaticConstructObject(pcls, hud) end, nil) end
     end
     if isok(param) and isok(uimodel) then pcall(function() param.Model = uimodel end) end
+    -- chegamos aqui = a tela VAI abrir -> marca ABERTA ANTES do push.
+    -- (NAO gatear no 'ok': o push abre a tela como efeito colateral, mas o
+    --  pcall pode voltar ok=false por falha de marshalling do retorno no UE4SS
+    --  -> se gatear no ok, a flag nao seta e o J reabre/empilha.)
+    _G.__RE_shown = true
     -- MODAL gerenciado: o jogo cuida do input sozinho (cliques SEM Alt+Tab)
     local ok, r = pcall(function() return hud:PushWidgetStackableUI(widget, param) end)
     log("open: PushWidgetStackableUI ok=" .. tostring(ok) .. " ret=" .. tostring(r))
@@ -367,13 +383,25 @@ end
 -- ==== FECHAR + devolver o controle do jogo ====
 function M.close()
     local hud = FindFirstOf("PalHUDInGame")
+    local svc = FindFirstOf("PalHUDService")   -- DONO de CloseOwnerStackableUI (RE 2026-07-22)
     local n = 0
     local ws = FindAllOf("WBP_PalExpedition_C")
     if ws then
         for _, w in ipairs(ws) do
             if isok(w) then
-                if isok(hud) then pcall(function() hud:CloseHUDWidget(w) end) end
-                pcall(function() w:RemoveFromParent() end)
+                -- FECHA O STACKABLE DE VERDADE (RE): CloseOwnerStackableUI vive no
+                -- PalHUDService (NAO no HUD nem no widget!), e o InObject tem que ser
+                -- algo CONTIDO na stackable widget -- sobe pela cadeia Outer ate achar
+                -- a UPalUserWidgetStackableUI. NUNCA a widget em si. WidgetTree (e seu
+                -- RootWidget) tem Outer == w, entao fecham w.
+                if isok(svc) then
+                    local wt = safe(function() return w.WidgetTree end, nil)
+                    if isok(wt) then pcall(function() svc:CloseOwnerStackableUI(wt) end) end
+                    local root = isok(wt) and safe(function() return wt.RootWidget end, nil) or nil
+                    if isok(root) then pcall(function() svc:CloseOwnerStackableUI(root) end) end
+                end
+                if isok(hud) then pcall(function() hud:CloseHUDWidget(w) end) end        -- backup (path AddHUD)
+                pcall(function() w:RemoveFromParent() end)                               -- backup
                 n = n + 1
             end
         end
@@ -385,7 +413,12 @@ function M.close()
         local lib = wbl()
         if isok(lib) then pcall(function() lib:SetInputMode_GameOnly(pc) end) end
     end
-    log("close: fechei " .. n .. " widget(s) + input->jogo")
+    _G.__RE_shown = false                   -- marca como FECHADA (p/ o toggle do J)
+    -- METRICA REAL: tamanho da pilha StackableUIWidgets no HUD. Se o close
+    -- funcionou, esse numero CAI (contar objeto valido enganava - fica pooled).
+    local sw = isok(hud) and safe(function() return hud.StackableUIWidgets end, nil) or nil
+    local stackN = sw and arrNum(sw) or -1
+    log("close: processei " .. n .. " widget(s); StackableUIWidgets restantes=" .. tostring(stackN))
     return n
 end
 
@@ -509,8 +542,54 @@ function M.collect()
     end
 end
 
+-- ==== GATE: valida o estado ANTES de abrir (fix dos 3 bugs do "abrir com J") ====
+-- Bug 1 (o pior): abrir a UI enquanto o chat/campo de texto tinha foco de
+--   teclado TRAVAVA o jogo. Bug 2: J repetido empilhava telas. Bug 3: J abria
+--   por cima de inventario/mapa/menu. Tudo resolvido validando antes de abrir.
+
+-- voce esta digitando? (chat com um DESCENDENTE focado = o EditableText do input)
+local function isTypingInChat()
+    for _, cn in ipairs({ "WBP_Ingame_Chat_C", "WBP_PalChatUIControlOverlay_C" }) do
+        local ws = FindAllOf(cn)
+        if ws then for _, w in ipairs(ws) do
+            if isok(w) then
+                if safe(function() return w:HasFocusedDescendants() end, false) == true then return true end
+                if safe(function() return w:HasKeyboardFocus()      end, false) == true then return true end
+            end
+        end end
+    end
+    return false
+end
+
+-- motivo pra NAO abrir agora (nil = pode abrir)
+local function openBlockedReason()
+    local pc = FindFirstOf("PalPlayerController")
+    -- cursor da UI ativo = tem menu aberto (inventario/mapa/ESC/palbox/craft...)
+    if isok(pc) and safe(function() return pc.bShowMouseCursor end, false) == true then
+        return "outra UI/menu aberto (cursor ativo)"
+    end
+    if isTypingInChat() then return "chat aberto (digitando)" end
+    return nil
+end
+
+-- J = abrir/fechar COM VALIDACAO (toggle + anti-freeze + anti-overlay)
+function M.toggle()
+    -- Bug 2: ja aberta -> FECHA (toggle), nunca empilha.
+    -- Fonte da verdade = a flag que setamos no open/close (o widget fica
+    -- valido mesmo fechado, e IsInViewport nao vira true p/ StackableUI).
+    if _G.__RE_shown then
+        log("toggle: expedicao aberta -> fechando")
+        M.close()
+        return
+    end
+    -- Bug 1 + 3: chat/outro menu aberto -> NAO abre (evita o freeze e o overlay)
+    local why = openBlockedReason()
+    if why then log("toggle: NAO abro agora (" .. why .. ")"); return end
+    M.open()
+end
+
 -- ==== expoe funcoes ====
-_G.__RE_open  = M.open      -- J = abrir (PushWidgetStackableUI)
+_G.__RE_open  = M.toggle    -- J = abrir/FECHAR com validacao (gate anti-freeze/stack/overlay)
 _G.__RE_focus = M.collect   -- a tecla U (registrada no boot) chama __RE_focus -> coleta
 _G.__RE_close = M.close
 _G.__RE_recon = M.recon
@@ -523,7 +602,11 @@ local function bind(guard, key, fn)
         pcall(function() RegisterKeyBind(key, { ModifierKey.CONTROL, ModifierKey.SHIFT }, fn) end)
     end
 end
-bind("__RE_K", Key.K, function() pcall(function() package.loaded["logic"] = nil; require("logic") end); if _G.__RE_recon then pcall(_G.__RE_recon) end end)
+-- reload de debug (Ctrl+Shift+K) -- portavel via require (sem caminho absoluto)
+bind("__RE_K", Key.K, function()
+    pcall(function() package.loaded["logic"] = nil; require("logic") end)
+    if _G.__RE_recon then pcall(_G.__RE_recon) end
+end)
 bind("__RE_L", Key.L, function() if _G.__RE_close then pcall(_G.__RE_close) end end)
 bind("__RE_J", Key.J, function() if _G.__RE_open  then pcall(_G.__RE_open)  end end)
 bind("__RE_U", Key.U, function() if _G.__RE_start then pcall(_G.__RE_start) end end)
