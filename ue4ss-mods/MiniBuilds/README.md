@@ -1,11 +1,11 @@
-# BuildSizes — the engine behind MiniBuilds 2.0
+# MiniBuilds 2.0
 
 Resize **any** structure in Palworld from a config file — pure Lua, no PalSchema, no `.pak`.
 
-Published as **MiniBuilds v2.0** ([Nexus 4143](https://www.nexusmods.com/palworld/mods/4143)).
-The PalSchema half of MiniBuilds still sizes the original three (Expedition Office, Ranch,
-Breeding Farm); those are listed here marked `[MiniBuilds]` and left disabled, so the scale is
-never applied twice.
+Published on [Nexus 4143](https://www.nexusmods.com/palworld/mods/4143). v1 sized three
+buildings through PalSchema; v2 does everything itself, and the PalSchema half is gone — with
+both in place the scale compounded on the meshes but not on the part positions, which pulled
+the buildings apart.
 
 The structure already spawns at the chosen size **in build mode**, so you can stack pieces and
 butt them together without weird collision. Scaling is **proportional**: size, part positions
@@ -28,10 +28,25 @@ applied twice.
 
 ## How it works
 
-A class mold (CDO) can only be read while the class is alive, i.e. while the structure is up in
-build mode. So a 600 ms game-thread tick watches
-`PalBuildObjectInstallChecker.TargetBuildObject`, resolves the ghost's class and scales the mold
-once.
+There are two separate problems, and both have to be solved:
+
+**What spawns next** — the class mold. Scaling it makes every future spawn right, including the
+build-mode ghost, which is what lets you place things already at size.
+
+**What is already standing** — the buildings in your base. Writing `RelativeScale3D` onto a live
+component changes the number and nothing else: Unreal caches the world transform and only
+recomputes it when a setter runs. `SetActorScale3D` on the actor is the right tool — one call,
+and meshes, child positions and collision all scale together.
+
+Telling the two apart cannot be done by reading values. It is done by fact: at the instant a
+mold is patched, everything of that class alive right then predates it; anything appearing later
+came out of the fixed mold and is left alone.
+
+The whole thing is driven by `NotifyOnNewObject` on `/Script/Pal.PalBuildObject` — the moment a
+build object appears is also the only moment its class is guaranteed to be loaded. Polling was
+tried and measured: a `StaticFindObject` for a class that is not loaded costs ~10 ms, and the
+`FindFirstOf` that used to detect build mode cost ~10 ms per tick on its own. Doing either every
+600 ms hitched the game; backing off instead made the base load at full size.
 
 The mold's components are **not** in `BlueprintCreatedComponents` — that one is per-instance,
 filled during construction, and comes back empty on the CDO. They live in
@@ -67,3 +82,7 @@ To generate another language, point the script at that `L10N` dump. The base tab
   only correct inside `LoopAsync`.
 - Never hardcode an absolute path. It works on the author's machine and silently fails on every
   other install. Both files derive their own folder from `debug.getinfo(1, "S").source`.
+- `FindAllOf` has to name the **native** class (`PalBuildObject`). Asking for the blueprint class
+  by name returns a single object and finds none of the buildings in the world.
+- Count what actually **changed**, not what was inspected. A counter that reported objects
+  visited read as success while nothing was happening.

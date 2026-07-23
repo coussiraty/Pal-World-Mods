@@ -1,9 +1,0 @@
-{
-    "BP_BuildObject_BreedFarm_C": {
-        "SM_FlatChest":          { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } },
-        "SM_MatingStation":      { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } },
-        "BuildWorkableBounds":   { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } },
-        "CheckOverlapCollision": { "BoxExtent": { "X": 520.0, "Y": 520.0, "Z": 61.75 } },
-        "WalkableRange":         { "SphereRadius": 390.0 }
-    }
-}

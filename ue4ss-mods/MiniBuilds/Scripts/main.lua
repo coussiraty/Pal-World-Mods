@@ -1,9 +1,9 @@
 -- =====================================================================
---  MiniBuilds / BuildSizes -- shell. Loads logic.lua and registers the key.
+--  MiniBuilds / MiniBuilds -- shell. Loads logic.lua and registers the key.
 --  Editing this file (or the keybind) needs a game restart; logic.lua is the
 --  part that hot-reloads, and config.lua reloads on save all by itself.
 -- =====================================================================
-local MOD = "BuildSizes"
+local MOD = "MiniBuilds"
 local function log(s) print("[" .. MOD .. "] " .. tostring(s) .. "\n") end
 
 -- Derive our own folder instead of hardcoding a path -- an absolute path works
@@ -26,14 +26,28 @@ loadLogic()
 -- (Ctrl+Shift+B was no good: the game uses B to go back / cancel while building.)
 -- Saving config.lua already reloads it; F7 is the manual nudge, and the only way
 -- to pick up edits to logic.lua itself.
-if not _G.__BS_keys then
-    _G.__BS_keys = true
+if not _G.__MB_keys then
+    _G.__MB_keys = true
     local ok, err = pcall(function()
         RegisterKeyBind(Key.F7, function()
             log("F7 -> reload")
             loadLogic()
-            if _G.__BS_reload then _G.__BS_reload() end
+            if _G.__MB_reload then _G.__MB_reload() end
         end)
     end)
     log(ok and "key F7 registered" or ("key FAILED: " .. tostring(err)))
+end
+
+-- Watch build objects being constructed. This is a hook, so it registers once
+-- and only a game restart can change it -- hence it lives here in the shell.
+-- It is what makes the sizes right the moment you log in, instead of the mod
+-- hunting for classes that are not loaded yet.
+if not _G.__MB_notify then
+    _G.__MB_notify = true
+    local ok, err = pcall(function()
+        NotifyOnNewObject("/Script/Pal.PalBuildObject", function(obj)
+            if _G.__MB_onNew then pcall(_G.__MB_onNew, obj) end
+        end)
+    end)
+    log(ok and "watching new build objects" or ("NotifyOnNewObject FAILED: " .. tostring(err)))
 end
