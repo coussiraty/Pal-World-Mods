@@ -1,28 +1,39 @@
 -- =====================================================================
---  BuildSizes - casca. Carrega a logic.lua e a tecla de reload do config.
---  Ctrl+Shift+B = recarrega o config.lua e reaplica (sem reiniciar).
+--  MiniBuilds / BuildSizes -- shell. Loads logic.lua and registers the key.
+--  Editing this file (or the keybind) needs a game restart; logic.lua is the
+--  part that hot-reloads, and config.lua reloads on save all by itself.
 -- =====================================================================
 local MOD = "BuildSizes"
 local function log(s) print("[" .. MOD .. "] " .. tostring(s) .. "\n") end
 
-local LOGIC = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Palworld\\Pal\\Binaries\\Win64\\ue4ss\\Mods\\BuildSizes\\Scripts\\logic.lua"
+-- Derive our own folder instead of hardcoding a path -- an absolute path works
+-- on the author's machine and silently fails on every other install.
+local LOGIC
+do
+    local src = debug.getinfo(1, "S").source
+    local dir = type(src) == "string" and src:sub(2):match("^(.*)[/\\][^/\\]*$")
+    LOGIC = dir and (dir .. "\\logic.lua")
+end
 
 local function loadLogic()
+    if not LOGIC then log("LOAD FAILED: could not resolve the Scripts folder"); return end
     local ok, err = pcall(dofile, LOGIC)
-    if ok then log("logic (re)carregada") else log("LOAD FALHOU: " .. tostring(err)) end
+    if ok then log("logic (re)loaded") else log("LOAD FAILED: " .. tostring(err)) end
 end
 loadLogic()
 
--- F7 (sem modificador): livre, e NAO colide com o modo de construcao.
--- (Ctrl+Shift+B nao servia: o jogo usa B pra voltar/cancelar na construcao.)
+-- F7 (no modifier): free, and it does not collide with build mode.
+-- (Ctrl+Shift+B was no good: the game uses B to go back / cancel while building.)
+-- Saving config.lua already reloads it; F7 is the manual nudge, and the only way
+-- to pick up edits to logic.lua itself.
 if not _G.__BS_keys then
     _G.__BS_keys = true
     local ok, err = pcall(function()
         RegisterKeyBind(Key.F7, function()
-            log("F7 -> recarrega config")
+            log("F7 -> reload")
             loadLogic()
             if _G.__BS_reload then _G.__BS_reload() end
         end)
     end)
-    log(ok and "tecla F7 OK" or ("tecla FALHOU: " .. tostring(err)))
+    log(ok and "key F7 registered" or ("key FAILED: " .. tostring(err)))
 end

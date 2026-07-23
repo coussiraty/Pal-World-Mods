@@ -23,7 +23,7 @@
 return {
 
     -- ---------- PRODUCTION (45) ----------
-    { name = "Primitive Workbench",             class = "BP_BuildObject_WorkBench_C",             enabled = true,  size = 0.65 },  -- <== EXAMPLE, TURNED ON
+    { name = "Primitive Workbench",             class = "BP_BuildObject_WorkBench_C",             enabled = false, size = 1.0 },
     { name = "Repair Bench",                    class = "BP_BuildObject_RepairBench_C",           enabled = false, size = 1.0 },
     { name = "Pal Gear Workbench",              class = "BP_BuildObject_WorkBench_SkillUnlock_C", enabled = false, size = 1.0 },
     { name = "High-Quality Workbench",          class = "BP_BuildObject_Factory_Hard_01_C",       enabled = false, size = 1.0 },

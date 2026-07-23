@@ -1,18 +1,20 @@
 -- =====================================================================
---  BuildSizes / logic.lua  -- config on-demand (molde no modo de construcao)
---  O Lua so pega os componentes do molde QUANDO a estrutura esta no menu de
---  construcao. Entao um tick (600ms) ve o preview; se a classe esta no config
---  e ativa, escala o molde PROPORCIONAL (posicao + tamanho + footprint, tudo
---  pelo mesmo fator), lendo os valores originais do proprio molde. Guarda o
---  original por classe+componente (cache) pra mudar o tamanho sem acumular.
---  Depois voce RE-SELECIONA a estrutura e ela nasce no tamanho.
+--  BuildSizes / logic.lua -- scales any build object through config.lua
+--
+--  A class mold (CDO) can only be read while the class is alive, i.e. while
+--  the structure is up in build mode. So a 600ms game-thread tick watches the
+--  placement ghost; when its class is listed and enabled in the config, the
+--  mold is scaled PROPORTIONALLY (size + part positions + footprint by the
+--  same factor) and the structure spawns at that size from then on.
+--
+--  Reloaded by F7 (see main.lua). Only this file reloads.
 -- =====================================================================
 local function log(s) print("[BuildSizes] " .. tostring(s) .. "\n") end
 local function safe(fn, d) local ok, v = pcall(fn); if ok and v ~= nil then return v end return d end
 local function alive(o) return o ~= nil and safe(function() return o:IsValid() end, false) end
 
--- GetName() NAO funciona nesta build (a sonda devolveu "?" pra tudo). O que
--- funciona e GetFName():ToString(). Deixo os outros como rede de seguranca.
+-- GetName() does NOT work in this build -- it returns nil for UClass and for
+-- components alike. GetFName():ToString() does. The rest is a safety net.
 local function nameOf(o)
     local n = safe(function() return o:GetFName():ToString() end)
     if type(n) == "string" and n ~= "" then return n end
@@ -23,29 +25,79 @@ local function nameOf(o)
     return nil
 end
 
-local CONFIG_PATH = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Palworld\\Pal\\Binaries\\Win64\\ue4ss\\Mods\\BuildSizes\\config.lua"
+-- Derive the mod folder from this script's own path. NEVER hardcode an absolute
+-- path: it works here and silently fails on everyone else's install.
+local function modDir()
+    local src = debug.getinfo(1, "S").source
+    if type(src) ~= "string" then return nil end
+    local scripts = src:sub(2):match("^(.*)[/\\][^/\\]*$")   -- drop '@' and the file name
+    return scripts and scripts:match("^(.*)[/\\][^/\\]*$")   -- .../BuildSizes/Scripts -> .../BuildSizes
+end
+local MOD_DIR = modDir()
+local CONFIG_PATH = MOD_DIR and (MOD_DIR .. "\\config.lua")
+if not CONFIG_PATH then log("!! could not resolve the mod folder -- config will not load") end
+
 local BS = _G.__BS or { orig = {} }; _G.__BS = BS
 
--- O config tem ~500 estruturas. Indexo por classe pra o tick nao varrer a lista
--- inteira 100x por minuto -- vira uma consulta direta.
-local function loadCfg()
+-- ~500 entries in the config. Index them by class so the tick does a lookup
+-- instead of walking the whole list 100 times a minute.
+local function loadCfg(quiet)
+    if not CONFIG_PATH then return false end
     local ok, cfg = pcall(dofile, CONFIG_PATH)
     if not ok or type(cfg) ~= "table" then
-        log("!! nao li config.lua: " .. tostring(cfg)); _G.__BS_idx = {}; return
+        if not quiet then log("!! could not read config.lua: " .. tostring(cfg)) end
+        _G.__BS_idx = _G.__BS_idx or {}
+        return false
     end
-    local idx, ligadas = {}, 0
+    local idx, on = {}, 0
     for _, e in ipairs(cfg) do
         if type(e) == "table" and type(e.class) == "string" then
             idx[e.class] = e
-            if e.enabled then ligadas = ligadas + 1 end
+            if e.enabled then on = on + 1 end
         end
     end
     _G.__BS_idx = idx
-    log("config: " .. #cfg .. " estruturas, " .. ligadas .. " ligada(s)")
+    log("config: " .. #cfg .. " structures, " .. on .. " enabled")
+    return true
 end
-loadCfg()
 
-local EXCLUDE = { Root = true, DefaultSceneRoot = true }   -- root nao (escala dupla)
+local function readRaw()
+    if type(io) ~= "table" or not CONFIG_PATH then return nil end
+    local f = io.open(CONFIG_PATH, "rb")
+    if not f then return nil end
+    local raw = f:read("*a")
+    f:close()
+    return raw
+end
+
+loadCfg()
+BS.raw = readRaw()      -- baseline, so the watcher does not fire on the first poll
+
+-- Watch config.lua and reload when it changes on disk: just save the file, no
+-- F7 needed. Plain file I/O touches no UObject, so doing it on the game thread
+-- is safe; every 3rd tick (~1.8s) is plenty and keeps it off the hot path.
+-- A half-written file fails to parse, so the previous config is kept and the
+-- next poll picks up the finished one.
+local WATCH_EVERY = 3
+local function watchConfig()
+    if type(io) ~= "table" then return end
+    BS.wn = (BS.wn or 0) + 1
+    if BS.wn % WATCH_EVERY ~= 0 then return end
+    local raw = readRaw()
+    if type(raw) ~= "string" or raw == BS.raw or raw == BS.rawBad then return end
+    if loadCfg(true) then
+        BS.raw, BS.rawBad = raw, nil
+        BS.applied = {}
+        BS.force = true
+        log("config.lua changed on disk -> reloaded")
+    else
+        -- complain once per broken version, then stay quiet until it is fixed
+        BS.rawBad = raw
+        log("!! config.lua changed but has a syntax error -- keeping the previous one")
+    end
+end
+
+local EXCLUDE = { Root = true, DefaultSceneRoot = true }   -- scaling the root would double it
 
 local function xyz(v, d)
     if v == nil then return nil end
@@ -54,10 +106,11 @@ local function xyz(v, d)
     return { X = x, Y = safe(function() return v.Y end, d), Z = safe(function() return v.Z end, d) }
 end
 
--- Os componentes do MOLDE nao estao em BlueprintCreatedComponents (isso e de
--- instancia, preenchido na construcao). Estao no SimpleConstructionScript, um
--- ComponentTemplate por no -- os mesmos "<Nome>_GEN_VARIABLE" que o PalSchema
--- patcheia. Sobe tambem pelas classes-pai, senao perde componente herdado.
+-- The mold's components are NOT in BlueprintCreatedComponents -- that one is
+-- per-instance, filled during construction, and comes back empty on the CDO.
+-- They live in SimpleConstructionScript, one ComponentTemplate per node: the
+-- very same "<Name>_GEN_VARIABLE" objects PalSchema patches. Walk the parent
+-- classes too, otherwise inherited components are missed.
 local function moldComponents(cls)
     local out, guard = {}, 0
     local c = cls
@@ -80,9 +133,10 @@ local function moldComponents(cls)
     return out
 end
 
--- Escala PROPORCIONAL: tamanho + posicao + footprint pelo mesmo fator (foi o que
--- fez a expedicao ficar certa). Guarda o original por classe+componente, senao
--- mudar o numero no config vai multiplicando em cima do ja escalado.
+-- PROPORTIONAL scale: size + part positions + footprint by the same factor.
+-- That is what keeps a shrunk structure looking like itself. Originals are
+-- cached per class+component, otherwise changing the number in the config
+-- would multiply on top of the already scaled value.
 local function applyMold(cls, className, scale)
     local comps = moldComponents(cls)
     if #comps == 0 then return 0, 0 end
@@ -117,27 +171,27 @@ local function applyMold(cls, className, scale)
     return n, #comps
 end
 
--- so loga quando o estado MUDA (nada de spam de pulso)
+-- Log on state CHANGE, never on a periodic pulse: alt-tabbing out of the game
+-- does not leave build mode, so a couple of seconds in there has to be enough
+-- to leave a trace in the log.
 local function state(s)
-    if BS.state ~= s then BS.state = s; log("[estado] " .. s) end
+    if BS.state ~= s then BS.state = s; log("[state] " .. s) end
 end
 
--- O molde so pode ser lido enquanto a classe esta viva -- ou seja, com a
--- estrutura no modo de construcao. Por isso o trabalho e aqui, e nao no load.
 local function tick()
+    watchConfig()
     if BS.force then BS.force = false; BS.state = nil end
-    -- loga na TRANSICAO, nao em pulso: o usuario precisa sair do jogo pra falar
-    -- comigo, entao 2s no modo de construcao ja tem que deixar registro.
     local ic = FindFirstOf("PalBuildObjectInstallChecker")
-    if not alive(ic) then state("fora do modo de construcao") return end
-    -- so vale com o fantasma POUSADO num chao valido; so com a roda aberta vem invalido
+    if not alive(ic) then state("not in build mode") return end
+    -- only valid with the ghost actually placed on valid ground; with the build
+    -- wheel merely open and nothing aimed at, this comes back invalid
     local t = safe(function() return ic.TargetBuildObject end)
-    if not alive(t) then state("construcao ON, sem fantasma pousado") return end
+    if not alive(t) then state("build mode on, no ghost placed") return end
     local cls = safe(function() return t:GetClass() end)
-    if not alive(cls) then state("fantasma OK, sem classe") return end
+    if not alive(cls) then state("ghost ok, no class") return end
     local cname = nameOf(cls)
-    if not cname then state("fantasma OK, nome da classe ilegivel") return end
-    state("fantasma = " .. cname)
+    if not cname then state("ghost ok, class name unreadable") return end
+    state("ghost = " .. cname)
 
     local e = (_G.__BS_idx or {})[cname]
     if not e or not e.enabled then return end
@@ -149,55 +203,57 @@ local function tick()
 
     local n, total = applyMold(cls, cname, scale)
     if total == 0 then
-        log("[" .. (e.name or cname) .. "] !! nenhum componente no SimpleConstructionScript")
+        log("[" .. (e.name or cname) .. "] !! no components in SimpleConstructionScript")
     else
-        log("[" .. (e.name or cname) .. "] molde " .. string.format("%.2f", scale)
-            .. "x -> " .. n .. "/" .. total .. " comps. RE-SELECIONE a estrutura.")
+        log("[" .. (e.name or cname) .. "] mold " .. string.format("%.2f", scale)
+            .. "x -> " .. n .. "/" .. total .. " comps. RE-SELECT the structure.")
     end
 end
 
--- global: o hot-reload redefine, e o loop sempre chama a versao atual.
--- O wrapper loga erro do tick (antes o pcall do loop engolia calado, e eu
--- passei uma hora achando que o loop tinha morrido).
+-- Global on purpose: a reload redefines it, and the loop always calls the
+-- current version. The wrapper logs tick errors -- the loop's own pcall used to
+-- swallow them silently, which cost an hour of chasing a loop that was fine.
 _G.__BS_tick = function()
     local ok, err = pcall(tick)
     if not ok then
         local e = tostring(err)
-        if e ~= BS.lasterr then BS.lasterr = e; log("!! ERRO no tick: " .. e) end
+        if e ~= BS.lasterr then BS.lasterr = e; log("!! tick error: " .. e) end
     end
 end
 
--- F7: recarrega o config e pede reaplicacao.
--- A tecla NAO toca na game thread. Ela so levanta a flag `force`; quem faz o
--- trabalho e o proprio loop, que JA roda na game thread.
--- (Chamar ExecuteInGameThread daqui com o LoopInGameThreadWithDelay ativo matou
---  a fila de game thread do UE4SS -- loop e fila morreram juntos no 1o F7.)
--- (nao chama loadCfg aqui: a casca ja fez dofile deste arquivo, e o loadCfg do
---  topo rodou junto -- chamar de novo so duplicava a linha no log)
+-- F7 is now just a manual nudge -- saving config.lua already reloads it. Kept
+-- because it also re-runs dofile on this file, which is how code edits land.
+-- The key handler does NOT touch the game thread; it only raises a flag, and
+-- the loop -- which already runs on the game thread -- does the work.
+-- (Calling ExecuteInGameThread from a key callback while a
+--  LoopInGameThreadWithDelay is active KILLS the UE4SS game-thread queue: loop
+--  and queue die together and only come back on a game restart.)
+-- No loadCfg here: the shell already re-ran dofile on this file, which runs the
+-- loadCfg at the top -- calling it again just duplicated the log line.
 _G.__BS_reload = function()
     BS.applied = {}
     BS.force = true
-    log("config recarregado -> aplica no proximo tick")
+    log("config reloaded -> applying on next tick")
 end
 
--- Padrao LITERAL do AutoHatchLua (o unico que comprovadamente gira nesta build).
--- Antes eu dava `return false` no callback do LoopInGameThreadWithDelay e o loop
--- morria na 1a volta -- o AutoHatchLua nao retorna nada, e roda ate hoje.
+-- Literal AutoHatchLua pattern, the only scheduling that provably runs in this
+-- build. Returning false from the LoopInGameThreadWithDelay callback KILLS the
+-- loop -- AutoHatchLua returns nothing, and it has been running for months.
 local function everyMsInGameThread(ms, fn)
     if type(LoopInGameThreadWithDelay) == "function" then
         local ok, handle = pcall(LoopInGameThreadWithDelay, ms, fn)
         if ok then log("tick: LoopInGameThreadWithDelay(" .. ms .. "ms) handle=" .. tostring(handle)); return true end
-        log("LoopInGameThreadWithDelay indisponivel (" .. tostring(handle) .. ") - fallback")
+        log("LoopInGameThreadWithDelay unavailable (" .. tostring(handle) .. ") - falling back")
     end
     if type(LoopAsync) == "function" and type(ExecuteInGameThread) == "function" then
         LoopAsync(ms, function()
-            ExecuteInGameThread(fn)      -- so empurra pra game thread
-            return false                 -- aqui o `false` E o correto (nao para o relogio)
+            ExecuteInGameThread(fn)      -- only ever push work to the game thread
+            return false                 -- here `false` IS correct: it keeps the clock running
         end)
         log("tick: LoopAsync(" .. ms .. "ms) + ExecuteInGameThread (fallback)")
         return true
     end
-    log("!! sem API de game thread - tick NAO agendado")
+    log("!! no game-thread API in this build - tick NOT scheduled")
     return false
 end
 
@@ -208,4 +264,6 @@ if not BS.loop then
     end)
 end
 
-log("BuildSizes config on-demand pronto. Menu de construcao -> selecione a estrutura -> re-selecione pra ver.")
+log((type(io) == "table")
+    and "ready. Save config.lua and it reloads by itself -- then aim in build mode and re-select."
+    or  "ready. NOTE: no io library in this build, config auto-reload is off -- use F7.")
