@@ -19,11 +19,17 @@ end
 local function dumpBox(tag, c)
     if not alive(c) then log("  " .. tag .. " = <nil>"); return end
     local cls = safe(function() return c:GetClass():GetFName():ToString() end, "?")
-    local rel = safe(function() return c.RelativeScale3D end, nil)
-    local un  = safe(function() return c:GetUnscaledBoxExtent() end, nil)
-    local sc  = safe(function() return c:GetScaledBoxExtent() end, nil)
-    log(string.format("  %s [%s] relScale=%s extentCru=%s extentEscalado=%s",
-        tag, cls, vstr(rel), vstr(un), vstr(sc)))
+    -- PROPRIEDADES direto (getter-methods voltam 0 no UE4SS):
+    local rel = safe(function() return c.RelativeScale3D end, nil)   -- FVector
+    local ext = safe(function() return c.BoxExtent end, nil)         -- FVector (cru, sem escala)
+    log(string.format("  %s [%s] relScale=%s BoxExtent=%s", tag, cls, vstr(rel), vstr(ext)))
+end
+
+local function actorScale(a)
+    -- RootComponent.RelativeScale3D via propriedade
+    local rc = safe(function() return a.RootComponent end, nil)
+    if not alive(rc) then rc = safe(function() return a.Root end, nil) end
+    return vstr(safe(function() return rc.RelativeScale3D end, nil))
 end
 
 local function medeBuildObjects()
@@ -36,14 +42,13 @@ local function medeBuildObjects()
         if alive(bo) and string.find(nm, "Expedition", 1, true) and not string.find(nm, "Default__", 1, true) then
             achou = true
             local st = safe(function() return bo.CurrentState end, "?")
-            log(string.format("Expedition ator: state=%s actorScale=%s",
-                tostring(st), vstr(safe(function() return bo:GetActorScale3D() end, nil))))
+            log(string.format("Expedition ator: state=%s (1=Simulation/fantasma 3=Available/construido) rootScale=%s",
+                tostring(st), actorScale(bo)))
             dumpBox("CheckOverlapCollision", safe(function() return bo.CheckOverlapCollision end, nil))
             local mesh = safe(function() return bo.SM_PalExpeditionFacilities end, nil)
             if alive(mesh) then
                 log("  SM_PalExpeditionFacilities relScale=" ..
-                    vstr(safe(function() return mesh.RelativeScale3D end, nil)) ..
-                    " worldScale=" .. vstr(safe(function() return mesh:GetComponentScale() end, nil)))
+                    vstr(safe(function() return mesh.RelativeScale3D end, nil)))
             end
         end
     end
@@ -56,8 +61,24 @@ local function medeInstallChecker()
     for i = 1, #l do
         local ic = l[i]
         if alive(ic) then
-            log("InstallChecker actorScale=" .. vstr(safe(function() return ic:GetActorScale3D() end, nil)))
-            dumpBox("InstallChecker.OverlapCheckComponent", safe(function() return ic.OverlapCheckComponent end, nil))
+            log("InstallChecker rootScale=" .. actorScale(ic))
+            -- tenta varios nomes possiveis do componente de colisao do checker
+            for _, prop in ipairs({ "OverlapCheckComponent", "CollisionComponent", "OverlapChecker", "Collision" }) do
+                local c = safe(function() return ic[prop] end, nil)
+                if alive(c) then dumpBox("InstallChecker." .. prop, c) end
+            end
+            -- e enumera TODAS as shapes do checker (pega o que existir)
+            local shapes = safe(function()
+                return ic:K2_GetComponentsByClass(StaticFindObject("/Script/Engine.ShapeComponent"))
+            end, nil)
+            if shapes then
+                local n = safe(function() return shapes:GetArrayNum() end, 0) or 0
+                log("  InstallChecker tem " .. tostring(n) .. " ShapeComponent(s)")
+                for j = 1, n do
+                    local c = shapes[j]
+                    if alive(c) then dumpBox("  shape#" .. j, c) end
+                end
+            end
         end
     end
 end

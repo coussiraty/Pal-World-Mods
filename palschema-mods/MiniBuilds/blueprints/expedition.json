@@ -1,11 +1,195 @@
 {
     "BP_BuildObject_Expedition_C": {
-        "SM_PalExpeditionFacilities": { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
-        "NS_Dungeon_Gate_In":         { "RelativeScale3D": { "X": 0.375, "Y": 0.375, "Z": 0.25 } },
-        "CheckOverlapCollision":      { "BoxExtent": { "X": 316.98, "Y": 123.32, "Z": 90.39 } },
-        "Box":                        { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
-        "BuildWorkableBounds":        { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
-        "PalLimitVolumeBox":          { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } },
-        "BlockNavmesh":               { "RelativeScale3D": { "X": 0.25, "Y": 0.25, "Z": 0.25 } }
+        "BlockNavmesh": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": -166.5,
+                "Y": 10.5,
+                "Z": 183.0
+            },
+            "BoxExtent": {
+                "X": 130.0044,
+                "Y": 122.3232,
+                "Z": 22.1838
+            }
+        },
+        "Box": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": -5.5981,
+                "Y": 0.0,
+                "Z": 117.7294
+            },
+            "BoxExtent": {
+                "X": 20.1809,
+                "Y": 129.5498,
+                "Z": 81.7732
+            }
+        },
+        "BuildWorkableBounds": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 15.8869,
+                "Y": -0.0,
+                "Z": 45.0
+            },
+            "BoxExtent": {
+                "X": 420.0,
+                "Y": 210.0,
+                "Z": 60.0
+            }
+        },
+        "CheckOverlapCollision": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 24.8819,
+                "Y": -0.0,
+                "Z": 117.9
+            },
+            "BoxExtent": {
+                "X": 380.3803,
+                "Y": 147.9787,
+                "Z": 108.4706
+            }
+        },
+        "BP_ChestInteract": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 27.3,
+                "Y": 0.0,
+                "Z": 42.0
+            },
+            "BoxExtent": {
+                "X": 325.0272,
+                "Y": 133.4537,
+                "Z": 46.8074
+            }
+        },
+        "BP_InteractableBox": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 27.8869,
+                "Y": -0.0,
+                "Z": 45.0
+            },
+            "BoxExtent": {
+                "X": 450.0,
+                "Y": 240.0,
+                "Z": 60.0
+            }
+        },
+        "NS_Dungeon_Gate_In": {
+            "RelativeScale3D": {
+                "X": 0.45,
+                "Y": 0.45,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 258.6776,
+                "Y": 0.0,
+                "Z": 31.5045
+            }
+        },
+        "PalLimitVolumeBox": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 75.3
+            },
+            "BoxExtent": {
+                "X": 352.4022,
+                "Y": 81.6916,
+                "Z": 36.0228
+            }
+        },
+        "IndicatorOrigin": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 57.0
+            }
+        },
+        "CharacterWalkSpline1": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 12.9413
+            }
+        },
+        "CharacterWalkSpline2": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 0.0,
+                "Y": 60.0,
+                "Z": 12.9413
+            }
+        },
+        "CharacterWalkSpline3": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 0.0,
+                "Y": -60.0,
+                "Z": 12.9413
+            }
+        },
+        "SM_PalExpeditionFacilities": {
+            "RelativeScale3D": {
+                "X": 0.3,
+                "Y": 0.3,
+                "Z": 0.3
+            },
+            "RelativeLocation": {
+                "X": 179.7526,
+                "Y": -0.0,
+                "Z": -18.4015
+            }
+        }
     }
 }

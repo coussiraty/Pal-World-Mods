@@ -19,6 +19,7 @@ feito em **Lua** (runtime) pra manter a separação.
 | **Sanidade** não cai (fome/fadiga/dano = 0) | `NoSanityLoss` | PalSchema | `blueprints/sanity.json` |
 | **Fazenda de reprodução** em 30s | `FastBreeding` | Lua | `Scripts/logic.lua` |
 | Construções **menores** (fazenda / expedição / rancho) | `MiniBuilds` | PalSchema | `blueprints/*.json` |
+| **Qualquer** construção no tamanho que você quiser — 493 listadas, config editável + F7 | `BuildSizes` | Lua | `config.lua`, `Scripts/logic.lua` |
 | **Rancho** com mais pals | `BiggerRanch` | PalSchema | `raw/ranch.json` |
 | **Expedições** mais rápidas | `FastExpeditions` | PalSchema | `raw/expeditions.json` |
 | **Cooldown** de skills de pal menor | `FastPalSkills` | PalSchema | `raw/waza.json`, `raw/partnerskill.json` |
