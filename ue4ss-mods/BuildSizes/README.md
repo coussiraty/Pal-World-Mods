@@ -9,8 +9,8 @@ o footprint (área ocupada) encolhem pelo mesmo fator.
 
 ## Como usar
 
-1. Abra `config.lua`, ache a estrutura (493 listadas, nome em pt-BR, por categoria).
-2. Troque `ativo = false` por `ativo = true` e escolha o `tamanho`
+1. Abra `config.lua`, ache a estrutura (493 listadas, nome em inglês, por categoria).
+2. Troque `enabled = false` por `enabled = true` e escolha o `size`
    (`1.0` normal · `0.65` menor · `0.3` bem pequeno · `1.5` maior).
 3. Salve e aperte **F7** dentro do jogo.
 4. No modo de construção, mire com **o fantasma pousado num chão válido**, e depois
@@ -20,6 +20,10 @@ Vale para o que for construído **depois**. O que já está no chão não muda.
 
 As 3 marcadas `[MiniBuilds]` já são tratadas por aquele mod — deixe `false`, senão a escala
 é aplicada duas vezes.
+
+O config é em **inglês** (nomes, chaves e instruções) porque o mod é feito pra publicar. Para
+gerar em outro idioma, aponte o gerador pro dump do `L10N/<idioma>` correspondente — a tabela
+base, sem `L10N`, é em **japonês** (idioma-fonte do jogo).
 
 ## Como funciona
 
@@ -41,9 +45,9 @@ mudar o número no config não multiplica em cima do já escalado.
 ## Regenerar o config quando o jogo atualizar
 
 `tools/gen_buildsizes_config.py` remonta a lista inteira a partir do cozido do jogo
-(`DT_BuildObjectDataTable_Common` + `DT_MapObjectMasterDataTable_Common` + os nomes pt-BR),
-via `paldump`. Ele **sobrescreve** o `config.lua` com tudo em `false` — guarde suas escolhas
-antes de rodar.
+(`DT_BuildObjectDataTable_Common` + `DT_MapObjectMasterDataTable_Common` + os nomes de
+`L10N/en/.../DT_MapObjectNameText_Common`), via `paldump`. Ele **sobrescreve** o `config.lua`
+com tudo em `false` — guarde suas escolhas antes de rodar.
 
 ## Armadilhas do UE4SS que este mod evita
 

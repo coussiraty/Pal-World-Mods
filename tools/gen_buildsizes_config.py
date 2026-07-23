@@ -3,7 +3,9 @@
 # Fontes (dumpadas pelo paldump, que le o cozido do pak -- nao inferir por header):
 #   DT_BuildObjectDataTable_Common  -> o que e construivel (roda de construcao) + categoria
 #   DT_MapObjectMasterDataTable_Common -> BlueprintClassSoft, de onde sai BP_..._C
-#   L10N/pt-BR/.../DT_MapObjectNameText_Common -> nome legivel em pt-BR
+#   L10N/en/.../DT_MapObjectNameText_Common -> nome em ingles
+#     (a tabela BASE, sem L10N, e em JAPONES -- e o idioma-fonte do jogo. Nao usar.)
+#     Para gerar em outro idioma, troque NAMES abaixo pelo dump do L10N daquele idioma.
 #
 # Uso:  python C:\PMK\gen_buildsizes_config.py
 import json, io, sys, os
@@ -16,17 +18,17 @@ def rows(fn):
 
 build = rows("DT_BuildObjectDataTable_Common.json")
 master = rows("DT_MapObjectMasterDataTable_Common.json")
-names = rows("NameText_ptBR.json")
+names = rows("NameText_EN.json")
 
 # ja tratadas pelo MiniBuilds (PalSchema). Se ligar aqui tambem, escala em dobro.
 MINIBUILDS = {"BP_BuildObject_MonsterFarm_C", "BP_BuildObject_BreedFarm_C",
               "BP_BuildObject_Expedition_C"}
 
 CAT = {
-    "Product": "Producao", "Pal": "Pal", "Storage": "Armazenamento", "Food": "Comida",
-    "Infrastructure": "Infraestrutura", "Light": "Iluminacao", "Foundation": "Estrutura",
-    "Defense": "Defesa", "Other": "Outros", "Furniture": "Mobilia",
-    "Dismantle": "Desmontar", "Blueprint": "Planta", "Favorite": "Favoritos",
+    "Product": "Production", "Pal": "Pal", "Storage": "Storage", "Food": "Food",
+    "Infrastructure": "Infrastructure", "Light": "Light", "Foundation": "Foundation",
+    "Defense": "Defense", "Other": "Other", "Furniture": "Furniture",
+    "Dismantle": "Dismantle", "Blueprint": "Blueprint", "Favorite": "Favorite",
 }
 
 def nome_de(rid):
@@ -59,29 +61,32 @@ for rid, row in build.items():
     })
 
 CAB = """-- =====================================================================
---  BuildSizes - CONFIG   (edite, salve, e aperte F7 dentro do jogo)
+--  BuildSizes - CONFIG   (edit, save, then press F7 in game)
 --
---  COMO USAR
---    1. Ache a estrutura na lista e troque  ativo = false  por  ativo = true
---    2. Escolha o  tamanho :  1.0 = normal | 0.65 = menor | 0.3 = bem pequeno
---                             1.5 = maior  (da pra AUMENTAR tambem)
---    3. Salve este arquivo e aperte  F7  dentro do jogo
---    4. No modo de construcao, mire com o fantasma pousado no chao. Depois
---       RE-SELECIONE a estrutura no menu -- ela nasce no tamanho novo.
+--  HOW TO USE
+--    1. Find the structure below and change  enabled = false  to  enabled = true
+--    2. Pick a  size :  1.0 = normal | 0.65 = smaller | 0.3 = tiny
+--                       1.5 = bigger  (you can scale UP too)
+--    3. Save this file and press  F7  in game
+--    4. In build mode, aim until the ghost is placed on valid ground. Then
+--       RE-SELECT the structure in the menu -- it spawns at the new size.
 --
---  A escala e PROPORCIONAL: tamanho, posicao das pecas e a area que ela ocupa
---  encolhem juntos. Por isso da pra empilhar/aproximar sem colisao esquisita.
+--  Scaling is PROPORTIONAL: size, part positions and the footprint all shrink
+--  by the same factor. That is why you can stack and butt them together
+--  without weird collision.
 --
---  Vale para o que voce construir DEPOIS. O que ja esta no chao nao muda.
+--  Applies to what you build AFTERWARDS. Already-placed structures are untouched.
 --
---  As 3 marcadas [MiniBuilds] ja sao tratadas por outro mod -- deixe false,
---  senao a escala e aplicada duas vezes.
+--  Adding one by hand: copy a line and swap the class (BP_BuildObject_<x>_C).
+--
+--  The 3 marked [MiniBuilds] are handled by that mod -- leave them false, or
+--  the scale gets applied twice.
 -- =====================================================================
 return {
 """
 
-ORDEM = ["Producao", "Estrutura", "Armazenamento", "Comida", "Pal", "Infraestrutura",
-         "Mobilia", "Iluminacao", "Defesa", "Outros", "Planta", "Favoritos", "Desmontar"]
+ORDEM = ["Production", "Foundation", "Storage", "Food", "Pal", "Infrastructure",
+         "Furniture", "Light", "Defense", "Other", "Blueprint", "Favorite", "Dismantle"]
 
 buf = io.StringIO()
 buf.write(CAB)
@@ -95,7 +100,7 @@ for cat in ORDEM + [c for c in grupos if c not in ORDEM]:
     w = max(len(e["classe"]) for e in itens) + 2
     for e in itens:
         tag = "   -- [MiniBuilds]" if e["classe"] in MINIBUILDS else ""
-        buf.write('    { nome = %-34s classe = %-*s ativo = false, tamanho = 1.0 },%s\n'
+        buf.write('    { name = %-34s class = %-*s enabled = false, size = 1.0 },%s\n'
                   % ('"%s",' % e["nome"].replace('"', "'"), w, '"%s",' % e["classe"], tag))
         total += 1
 buf.write("}\n")

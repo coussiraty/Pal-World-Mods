@@ -35,9 +35,9 @@ local function loadCfg()
     end
     local idx, ligadas = {}, 0
     for _, e in ipairs(cfg) do
-        if type(e) == "table" and type(e.classe) == "string" then
-            idx[e.classe] = e
-            if e.ativo then ligadas = ligadas + 1 end
+        if type(e) == "table" and type(e.class) == "string" then
+            idx[e.class] = e
+            if e.enabled then ligadas = ligadas + 1 end
         end
     end
     _G.__BS_idx = idx
@@ -140,8 +140,8 @@ local function tick()
     state("fantasma = " .. cname)
 
     local e = (_G.__BS_idx or {})[cname]
-    if not e or not e.ativo then return end
-    local scale = tonumber(e.tamanho) or 1.0
+    if not e or not e.enabled then return end
+    local scale = tonumber(e.size) or 1.0
     local key = cname .. "=" .. scale
     if BS.applied and BS.applied[key] then return end
     BS.applied = BS.applied or {}
@@ -149,9 +149,9 @@ local function tick()
 
     local n, total = applyMold(cls, cname, scale)
     if total == 0 then
-        log("[" .. (e.nome or cname) .. "] !! nenhum componente no SimpleConstructionScript")
+        log("[" .. (e.name or cname) .. "] !! nenhum componente no SimpleConstructionScript")
     else
-        log("[" .. (e.nome or cname) .. "] molde " .. string.format("%.2f", scale)
+        log("[" .. (e.name or cname) .. "] molde " .. string.format("%.2f", scale)
             .. "x -> " .. n .. "/" .. total .. " comps. RE-SELECIONE a estrutura.")
     end
 end
