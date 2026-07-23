@@ -1,5 +1,8 @@
 {
     "BP_BuildObject_MonsterFarm_C": {
-        "SM_PalFarm": { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } }
+        "SM_PalFarm":            { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } },
+        "BuildWorkableBounds":   { "RelativeScale3D": { "X": 0.65, "Y": 0.65, "Z": 0.65 } },
+        "CheckOverlapCollision": { "BoxExtent": { "X": 325.0, "Y": 325.0, "Z": 61.75 } },
+        "WalkableRange":         { "SphereRadius": 247.0 }
     }
 }
